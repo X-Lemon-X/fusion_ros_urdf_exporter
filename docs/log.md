@@ -6,6 +6,15 @@ linked pages; this file is the short version.
 
 ---
 
+## 2026-11-06 — spoon_bot runs in ROS 2 on Linux
+
+**Done**
+- The project owner built and launched the re-exported spoon_bot on ROS 2
+  Jazzy (Linux). The joints move as expected in RViz →
+  [robot-spoon-bot.md](knowledge/robot-spoon-bot.md#in-ros-2-jazzy-on-linux-2026-11-06).
+- Added the RViz and `joint_state_publisher_gui` screenshots to the root
+  README, section "Viewing in ROS 2".
+
 ## 2026-11-06 — Mount points for modular robots (0005)
 
 **Done**
@@ -43,7 +52,8 @@ linked pages; this file is the short version.
 - Right wheels turn about −Y, left about +Y: flip them in the override.
 
 **Next**
-- Re-export spoon_bot with the fix and check the joints in RViz (Q21).
+- ~~Re-export spoon_bot with the fix and check the joints in RViz (Q21).~~
+  Done, see "spoon_bot runs in ROS 2 on Linux" above. Q21 not yet moved.
 
 ## 2026-11-06 — First export with joints (6-axis arm `sdrac1`)
 

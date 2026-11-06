@@ -12,8 +12,15 @@ A Fusion 360 script that exports the open design to a ready-to-build
 It works for any robot model.
 
 Full documentation: [docs/](docs/README.md).
-### Example robot (Spoon bot)
-![Example robot in Fusion](docs/images/example_bot.png)
+
+### Example robot (spoon_bot)
+
+<p>
+  <img src="docs/images/example_bot.png" alt="spoon_bot in Fusion" height="400">
+  <img src="docs/images/rviz.png" alt="spoon_bot exported, in RViz" height="400">
+</p>
+
+*spoon_bot in Fusion (left) and the exported package in RViz (right).*
 
 ## Install
 
@@ -207,6 +214,14 @@ The launch file starts three nodes:
 
 Move each slider and check that every part turns or slides about the right
 axis.
+
+<p>
+  <img src="docs/images/rviz.png" alt="spoon_bot in RViz with its TF frames" height="480">
+  <img src="docs/images/joint_controll.png" alt="joint_state_publisher_gui with one slider per joint" height="480">
+</p>
+
+*spoon_bot in RViz with its TF frames (left), and the
+`joint_state_publisher_gui` window with one slider per joint (right).*
 
 ## Changing joints without touching Fusion
 

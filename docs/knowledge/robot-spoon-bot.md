@@ -37,6 +37,20 @@ Exported from real Fusion into `C:/Users/patdu/Desktop/fftest/spoon_bot`:
   the component's own frame, and the visual origin places each copy.
 - The meshes total 9.7 MB; the camera alone is 8.2 MB.
 
+## In ROS 2 Jazzy on Linux (2026-11-06)
+
+- The re-export (with the limit fix) builds with `colcon build` and runs
+  with `ros2 launch spoon_bot display.launch.py`.
+- `joint_state_publisher_gui` shows 8 sliders: `wheel_1_joint` …
+  `wheel_4_joint`, `rob_arm_1_joint`, `arm_rota_1_joint`,
+  `arm_rota_2_joint`, `arm_spoon_1_joint`. The fixed joints get none.
+- The project owner moved the joints in RViz and reports that it works
+  well. Screenshots: [rviz.png](../images/rviz.png),
+  [joint_controll.png](../images/joint_controll.png), also in the root
+  README.
+- `config/joints.yaml` of the re-export: `arm_rota_1_joint` limits
+  −1.571 … 3.142 rad, no −2π shift.
+
 ## Joint geometry at the export pose (computed from the xacro)
 
 | Joint | Origin in base frame [m] | Axis in base frame |
