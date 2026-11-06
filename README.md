@@ -49,14 +49,26 @@ camera, a lidar, a vertical slider and a 3-joint arm with a spoon.
   (`arm_rota:2` → `arm_rota_2`).
 - **Subcomponents are merged into their top-level parent.** Their bodies go
   into the parent's mesh, mass and inertia.
-- **Keep sensors as separate designs.** In spoon_bot the lidar
-  (`STL-19P_3D`) and the camera (`DM9095_OAK-D-LITE...`) are their own
-  designs in the project, next to the robot (`simple_robot`):
+- **Parts can come from other designs.** A top-level component does not
+  have to be modelled in the robot design. It can be inserted from another
+  design, for example:
+
+  - a vendor sensor
+  - a gripper
+  - a whole arm
+
+  In spoon_bot, for example, the lidar (`STL-19P_3D`) and the camera
+  (`DM9095_OAK-D-LITE...`) are separate designs in the project, next to the
+  robot (`simple_robot`):
 
   ![Robot, lidar and camera as separate designs](docs/images/design_parts.png)
 
-  Drag them into the robot design. They appear as linked components (chain
-  icon), and each one becomes a single link.
+  An inserted design shows up as a linked component (chain icon) and is
+  treated like any other top-level component:
+
+  - one link, with its subcomponents merged in
+  - joints work the same way
+  - without a joint, it is fixed to `base_link`
 - **Hidden components are skipped** (light bulb off).
 - **Copies of one component** (`wheel:1` … `wheel:4`) are fine. Each copy
   gets its own link.
