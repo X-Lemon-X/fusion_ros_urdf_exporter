@@ -33,5 +33,12 @@ These poses are also used in `tests/fake_design.py`.
   (0.0958, −0.0173, 0.6636).
 - **Lidar:** may be mounted upside down (its subcomponents have roll 180°).
   Check the scan direction in RViz (Q7).
-- **Wheel radius:** not measured yet. Needed for the `base_footprint` height
-  and the drive controller (Q8).
+- **Wheel size:** from the exported wheel STL bounding box (local frame,
+  ±80 mm in X/Y, ±20 mm in Z): **radius 0.080 m, width 0.040 m**. The wheel
+  axis is the component Z axis. Measured 2026-11-06 (export `ttt1`).
+- **Masses from Fusion (export `ttt1`, 2026-11-06):** `base_link` 229.49 kg
+  (implausible, probably a default material), three wheels 2.065 kg each but
+  `wheel_right_back` 0.263 kg (different material), lidar `STL_19P_3D` no
+  mass at all (no `<inertial>`), OAK-D Lite 0.158 kg. See Q4.
+- **Joints:** the export found no Fusion joints between the top-level
+  components; every link was fixed to the base (Q22).

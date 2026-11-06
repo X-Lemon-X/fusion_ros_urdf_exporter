@@ -6,6 +6,26 @@ linked pages; this file is the short version.
 
 ---
 
+## 2026-11-06 — First run in real Fusion (rft_robodog → `ttt1`)
+
+**Done**
+- The project owner ran the exporter in Fusion into
+  `C:/Users/patdu/Desktop/fftest/ttt1`. No crash; all package files
+  written; the xacro file processes with xacro 2.1.1 (7 links, 6 joints).
+
+**Found**
+- Fusion writes STLs in the local frame, in mm → [mesh-export.md](knowledge/mesh-export.md#measured-in-real-fusion-2026-11-06-rft_robodog-export-ttt1).
+- No Fusion joints were read; all links fixed to the base (Q22).
+- Masses not sane: base 229 kg, one wheel 0.263 kg, lidar no mass (Q4).
+- Wheel radius 0.080 m from the STL (answers Q8).
+- Meshes total 109 MB; the base mesh alone 81 MB.
+
+**Next**
+- Answer Q22 (where are the joints?) and re-export.
+- Check the summary in Text Commands for warnings (Q2).
+- `colcon build` + `ros2 launch` in a ROS 2 workspace (Q5, Q9).
+
+
 ## 2026-11-06 — Knowledge base set up
 
 **Done**

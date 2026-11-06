@@ -33,6 +33,13 @@ Fusion writes the STL in. It measures that after the export.
    link gets the warning "Mesh frame check uncertain (x% bbox mismatch) –
    verify in RViz."
 
+## Measured in real Fusion (2026-11-06, rft_robodog, export `ttt1`)
+
+- Fusion writes the STL in the **component's local frame, in mm**. All 7
+  meshes were detected as local / mm; visual origins are identity.
+- Medium refinement gives large files: `ttt1_base_link.stl` 81 MB, the
+  OAK-D Lite 8.4 MB, each wheel 5.3 MB; 109 MB in total.
+
 ## Known limitations (as of 2026-11-06)
 
 - STL has no colours. RViz shows a single colour per link.

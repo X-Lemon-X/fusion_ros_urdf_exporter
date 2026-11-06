@@ -20,12 +20,14 @@ task, not a design. Write a numbered proposal before building any of the
 others.
 
 1. Test in real Fusion on rft_robodog and answer Q1–Q5 in
-   [open-questions.md](../open-questions.md).
+   [open-questions.md](../open-questions.md). First run done 2026-11-06
+   (export `ttt1`, see [log.md](../log.md)); joints (Q22), materials (Q4)
+   and the ROS 2 build (Q5) still to check.
 2. ROS axis convention → [0001](0001-ros-axis-convention.md).
 3. Real joints → ~~[0002](0002-real-joints.md)~~ [0003](0003-joints-from-fusion-xacro.md);
    package folder and re-export → [0004](0004-package-folder-and-reexport.md).
-4. `base_footprint` link on the ground under `base_link` (needs the wheel
-   radius, Q8).
+4. `base_footprint` link on the ground under `base_link` (wheel radius
+   0.080 m, Q8 answered).
 5. Mount points: empty links for vendor sensors (OAK, lidar) instead of
    their meshes, so vendor URDFs can be attached. Matches the modular
    xacro setup used on the robots.
