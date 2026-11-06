@@ -15,10 +15,16 @@ linked pages; this file is the short version.
 - Offline tests on Linux, Python 3.12: 26 pass, 1 skipped (no PyPI xacro).
 - Docs check: 0 link/index/status problems. Removed stale "not run / not
   built yet" lines; struck through the superseded v0.1 link frame decision.
+- `ros2 launch ttt1 display.launch.py` works; RViz shows the whole model
+  with correct poses (answers Q5). The project owner set the joints by hand
+  in `config/joints_override.yaml`, because every exported joint was
+  `fixed` (Q22).
 
 **Next**
-- `ros2 launch ttt1 display.launch.py`; check meshes in RViz (Q5) and the
-  lidar scan direction (Q7).
+- ~~`ros2 launch ttt1 display.launch.py`; check meshes in RViz (Q5)~~ Done,
+  see above. Still open: the lidar scan direction (Q7).
+- Find out why no Fusion joints were read (Q22), then re-export and check
+  joint axes from Fusion (Q21).
 
 ## 2026-11-06 — First run in real Fusion (rft_robodog → `ttt1`)
 

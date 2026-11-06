@@ -10,7 +10,6 @@ When a question is answered, write the answer next to it (or move it to
 | Q1 | Do the Fusion dialogs (`createFolderDialog`, `messageBox`, progress dialog) behave as the code assumes? | Yes, as in the fake `adsk`. Check on the first real run. | [exporter-pipeline](knowledge/exporter-pipeline.md#steps) |
 | Q2 | Does mesh frame detection work on real Fusion STLs (no "Mesh frame check uncertain" warnings)? | Fusion writes local frame, mm (seen 2026-11-06). Whether the summary showed warnings not yet confirmed. | [mesh-export](knowledge/mesh-export.md) |
 | Q3 | What is the sign convention of the off-diagonal terms from `getXYZMomentsOfInertia`? | As in fusion2urdf: used as returned, no sign flip. | [inertia](knowledge/inertia.md) |
-| Q5 | Do the meshes appear in the right place in RViz? | Yes, the offline tests pass. Check on the first real run. | [mesh-export](knowledge/mesh-export.md), [ros2-package](knowledge/ros2-package.md) |
 | Q7 | Is the lidar on rft_robodog mounted upside down (subcomponents have roll 180°)? | Unknown. Check the scan direction in RViz. | [robodog](knowledge/robot-rft-robodog.md) |
 | Q9 | Which ROS 2 distribution(s) must the package support? | Any current ROS 2; nothing distro-specific is used. Builds on Jazzy (2026-11-06); other distros not tested. | [ros2-package](knowledge/ros2-package.md) |
 | Q10 | Should the REP-103 axis option be a UI prompt or only a setting? | A setting in `ExportSettings`. | [0001](proposals/0001-ros-axis-convention.md) |
@@ -34,3 +33,4 @@ When a question is answered, write the answer next to it (or move it to
 | Q11 | Should xacro replace plain URDF or be written next to it? | **xacro replaces it; no plain `.urdf` written** (2026-11-06). See [decisions](decisions.md#2026-11-06--joints-xacro-output-and-package-folder). |
 | Q19 | Does xacro allow `.get()` on data from `xacro.load_yaml`? | **Yes, but inside `${…}` use `dict()`, not `{}`** (2026-11-06, tested with xacro 2.1.1). See [joints.md](knowledge/joints.md#xacro-facts-measured-with-xacro-211-from-pypi-2026-11-06). |
 | Q8 | What is the wheel radius of rft_robodog? | **0.080 m (width 0.040 m)**, from the wheel STL bounding box (2026-11-06). See [robodog](knowledge/robot-rft-robodog.md#notes-per-component). |
+| Q5 | Do the meshes appear in the right place in RViz? | **Yes** (2026-11-06, rft_robodog export `ttt1`, `ros2 launch` on ROS 2 Jazzy, Linux): the whole model shows with correct poses. See [ros2-package](knowledge/ros2-package.md#measured-on-ros-2-jazzy-2026-11-06-export-ttt1-linux). |

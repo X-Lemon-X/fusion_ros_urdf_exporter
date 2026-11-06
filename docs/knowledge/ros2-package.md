@@ -60,8 +60,7 @@ rebuild (`colcon build`), not a new export from Fusion.
 
 ## Known limitations (as of 2026-11-06)
 
-- Built once in a real workspace (below). `ros2 launch` and the RViz view
-  are not checked yet (Q5).
+- Built and launched in one real workspace only (below).
 - Only ROS 2 Jazzy has been tried; no distribution is pinned (Q9).
 
 ## Measured on ROS 2 Jazzy (2026-11-06, export `ttt1`, Linux)
@@ -71,3 +70,8 @@ rebuild (`colcon build`), not a new export from Fusion.
 - `xacro install/ttt1/share/ttt1/urdf/ttt1.urdf.xacro` with Jazzy's xacro
   works; `check_urdf` parses the result: root `ttt1_base_link`, 6 children
   (all `fixed`, because the model had no joints, Q22).
+- `ros2 launch ttt1 display.launch.py` starts `robot_state_publisher`,
+  `joint_state_publisher_gui` and RViz; all meshes show at the correct
+  poses (Q5).
+- Joints changed in `config/joints_override.yaml` take effect without a new
+  export from Fusion (the override is read by xacro at launch).
