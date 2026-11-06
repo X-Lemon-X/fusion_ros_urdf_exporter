@@ -223,6 +223,27 @@ axis.
 *spoon_bot in RViz with its TF frames (left), and the
 `joint_state_publisher_gui` window with one slider per joint (right).*
 
+## Plain URDF (Isaac Sim and other importers)
+
+The package contains xacro only. For tools that read only plain URDF, such
+as the Isaac Sim URDF importer, convert it:
+
+```bash
+tools/xacro_to_urdf.sh <package>            # mesh paths ../meshes/…
+tools/xacro_to_urdf.sh <package> --package  # mesh paths package://<package>/…
+tools/xacro_to_urdf.sh <package> --collision  # also add collision geometry
+tools/xacro_to_urdf.sh <package> --package --collision ## USE this for Isaac Sim
+``` 
+
+**For a simulator (Isaac Sim, Gazebo) use `--collision`.** The exporter
+writes no collision geometry, so without it the robot falls through the
+ground. The option copies each link's visual mesh as its collision mesh.
+
+This writes `<package>/urdf/<package>.urdf`. The default relative mesh paths
+keep working when the package folder is moved. The script needs `xacro`
+(from ROS 2, or `pip install xacro`). Run it again after every export or
+change to `joints_override.yaml`.
+
 ## Changing joints without touching Fusion
 
 Edit `config/joints_override.yaml`. Any key you set wins over

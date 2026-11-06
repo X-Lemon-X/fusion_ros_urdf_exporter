@@ -43,8 +43,22 @@ The xacro and YAML files are described in [joints.md](joints.md#generated-files)
   `joint_state_publisher_gui` and `rviz2 -d display.rviz`.
 - `display.rviz`: Grid, RobotModel (topic `/robot_description`, transient
   local) and TF displays.
-- No plain `.urdf` is written. Get one with
-  `xacro urdf/<pkg>.urdf.xacro > <pkg>.urdf`.
+- No plain `.urdf` is written. Get one with `tools/xacro_to_urdf.sh <pkg>`
+  (in this repo). It writes `urdf/<pkg>.urdf` with mesh paths relative to
+  that file (`../meshes/…`), or `package://` paths with `--package`.
+  `--collision` adds one `<collision>` per link, a copy of its `<visual>`
+  (origin and mesh, no material). Without it, spoon_bot fell through a
+  FlatGrid ground in Isaac Sim (2026-11-06), because the exporter writes no
+  collision geometry. It
+  sources the first `/opt/ros/*/setup.bash` if `xacro` is not on the
+  `PATH`, and it checks that every mesh exists. On a re-export the file
+  counts as a user file: it is kept but not updated. Tested 2026-11-06 on
+  `spoon_bot`, `ttt1` and `sdrac1` (Jazzy, `check_urdf` passes).
+- **Isaac Sim (2026-11-06, spoon_bot):** the URDF from
+  `xacro_to_urdf.sh spoon_bot --collision` imports with the Isaac Sim URDF
+  importer (File → Import). The relative `../meshes/…` paths resolve, and
+  the robot stands on a FlatGrid ground. The Isaac Sim version used (5.1 or
+  6.0, both installed) was not recorded.
 
 ## Using it
 

@@ -6,6 +6,24 @@ linked pages; this file is the short version.
 
 ---
 
+## 2026-11-06 — Plain URDF for Isaac Sim
+
+**Done**
+- New script `tools/xacro_to_urdf.sh <pkg> [--package] [--collision]`:
+  writes `urdf/<pkg>.urdf` with relative mesh paths; `--collision` copies
+  each visual mesh as collision → [ros2-package.md](knowledge/ros2-package.md#files).
+  README section "Plain URDF (Isaac Sim and other importers)".
+- spoon_bot imported in Isaac Sim and stands on the ground.
+
+**Found**
+- Isaac Sim imports plain URDF only, no xacro.
+- Without collision geometry the robot falls through the ground; the
+  exporter writes none.
+
+**Next**
+- Proposal for collision geometry in the exporter (roadmap item 6) instead
+  of copying visual meshes.
+
 ## 2026-11-06 — spoon_bot runs in ROS 2 on Linux
 
 **Done**
