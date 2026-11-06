@@ -75,3 +75,5 @@ no meaning. Move the origins (or add joint origins) before exporting.
   create a new folder (Q1, Q20). Only the fake `adsk` has been used so far.
 - The coordinate space of joint vectors and transforms (Q21).
 - The sign of the off-diagonal terms from `getXYZMomentsOfInertia` (Q3).
+- `occurrence.childOccurrences` and their `transform2` in world (root)
+  coordinates, used for the mount frame (Q24).

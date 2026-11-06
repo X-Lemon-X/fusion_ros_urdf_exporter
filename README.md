@@ -69,6 +69,9 @@ camera, a lidar, a vertical slider and a 3-joint arm with a spoon.
   - one link, with its subcomponents merged in
   - joints work the same way
   - without a joint, it is fixed to `base_link`
+  - **joints inside it are not exported**. For a module with its own
+    joints, such as an arm, see
+    [Modular robots](#modular-robots-arm-gripper-on-a-base).
 - **Hidden components are skipped** (light bulb off).
 - **Copies of one component** (`wheel:1` … `wheel:4`) are fine. Each copy
   gets its own link.
@@ -239,10 +242,49 @@ wheel_left_front_1_joint:
   effort: 10.0          # N m or N
   velocity: 1.0         # rad/s or m/s
   frame: origin         # joint | origin – applied on the next export
+  mount: true           # empty link for another package – applied on the next export
 ```
 
 `frame: origin` uses the component origin as the link frame instead of the
 Fusion joint frame. Use it when a joint in Fusion is badly placed.
+
+## Modular robots (arm, gripper on a base)
+
+A module with its own joints, such as an arm, is best kept as its own
+package. The robot package then keeps only the place where the module sits.
+In ROS one joint connects the two.
+
+1. **Export the module on its own.** Open the arm design (it has its own
+   `base_link` and joints) and export it, for example into a folder
+   `sdrac1`. You get the package `sdrac1` with the root link
+   `sdrac1_base_link`.
+2. **Insert the module into the robot design** where it is mounted, as one
+   top-level component (for example `sdrac1:1`). Attach it with a rigid
+   joint, or leave it without a joint.
+3. **Export the robot.** In the robot package, open
+   `config/joints_override.yaml` and mark the module as a mount:
+   ```yaml
+   sdrac1_1_joint:
+     mount: true
+   ```
+4. **Export the robot again.** The link `sdrac1_1` is now empty: no mesh
+   and no mass, only its position. Its frame is the module's `base_link`,
+   which is the same frame as `sdrac1_base_link` in the module's package.
+   The summary shows the joint to add.
+5. **Join the packages** in your own xacro, with one joint and no origin:
+   ```xml
+   <robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="spoon_bot_with_arm">
+     <xacro:include filename="$(find spoon_bot)/urdf/spoon_bot.urdf.xacro"/>
+     <xacro:include filename="$(find sdrac1)/urdf/sdrac1.urdf.xacro"/>
+     <joint name="sdrac1_1_mount" type="fixed">
+       <parent link="sdrac1_1"/>
+       <child link="sdrac1_base_link"/>
+     </joint>
+   </robot>
+   ```
+
+The same works for vendor sensors that come with their own URDF: mark the
+sensor as a mount and attach the vendor's URDF to that link.
 
 ## Troubleshooting
 

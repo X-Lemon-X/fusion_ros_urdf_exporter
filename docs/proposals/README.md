@@ -12,6 +12,7 @@ Status values: `draft` (being discussed) · `accepted` (we will do it) ·
 | [0002](0002-real-joints.md) | Real joints (continuous, revolute, prismatic) | superseded by 0003 |
 | [0003](0003-joints-from-fusion-xacro.md) | Joints from Fusion, xacro macro and YAML joint config | done |
 | [0004](0004-package-folder-and-reexport.md) | Package folder, name and re-export | done |
+| [0005](0005-mount-points.md) | Mount points: attach separately exported robots | done |
 
 ## Planned, no proposal yet
 
@@ -28,9 +29,9 @@ others.
    package folder and re-export → [0004](0004-package-folder-and-reexport.md).
 4. `base_footprint` link on the ground under `base_link` (wheel radius
    0.080 m, Q8 answered).
-5. Mount points: empty links for vendor sensors (OAK, lidar) instead of
-   their meshes, so vendor URDFs can be attached. Matches the modular
-   xacro setup used on the robots.
+5. ~~Mount points: empty links for vendor sensors (OAK, lidar) instead of
+   their meshes, so vendor URDFs can be attached.~~ Done 2026-11-06 →
+   [0005](0005-mount-points.md).
 6. Collision geometry: simple primitives (box or cylinder from the bounding
    box), or the visual mesh as an option.
 7. ~~xacro output (macro with a `parent` parameter), next to or instead of

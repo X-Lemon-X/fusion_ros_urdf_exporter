@@ -521,5 +521,90 @@ class FolderTests(ExportTestBase):
         self.assertIn("10.0 mm from the component origin", self.summary)
 
 
+class MountTests(ExportTestBase):
+    """`mount: true`: empty link where a separately exported robot is attached."""
+
+    def design(self, with_sub_base=True):
+        base = box("base_link:1", Pose())
+        arm = box("sdrac1:1", Pose(rot_rpy(0, 0, math.pi / 2), [0.1, 0.0, 0.2]))
+        sub = None
+        if with_sub_base:
+            sub = arm.add_child(box("base_link:1", arm.world * Pose(translation=[0, 0, 0.01])))
+        snap = arm.world * Pose(translation=[0.03, 0, 0])      # joint frame, not the arm base
+        return base, arm, sub, [FakeJoint("Rigid 1", arm, base, RIGID, snap)]
+
+    def set_mount(self):
+        with open(os.path.join(self.pkg, "config", "joints_override.yaml"), "a") as f:
+            f.write("sdrac1_1_joint:\n  mount: true\n")
+
+    def test_mount_link_is_empty_and_at_sub_base_link(self):
+        base, arm, sub, joints = self.design()
+        self.export([base, arm], joints)
+        self.assertTrue(os.path.isfile(os.path.join(self.pkg, "meshes", "sdrac1_1.stl")))
+        self.set_mount()
+        self.export([base, arm], joints)
+
+        links, xj, cfg = self.read_package()
+        link = links["sdrac1_1"]
+        self.assertIsNone(link.find("visual"))
+        self.assertIsNone(link.find("inertial"))
+        self.assertFalse(os.path.isfile(os.path.join(self.pkg, "meshes", "sdrac1_1.stl")))
+        world = self.link_worlds(Pose())["sdrac1_1"]
+        self.assertLess(math.dist(world.t, sub.world.t), 1e-6)
+        for a, b in zip(world.R, sub.world.R):
+            self.assertLess(math.dist(a, b), 1e-6)
+        self.assertEqual(cfg["sdrac1_1_joint"]["type"], "fixed")
+        self.assertIn("mount point: no mesh, no inertia", self.summary)
+        self.assertIn('<child link="sdrac1_base_link"/>', self.summary)
+        self.assertIn("frame: base_link", self.summary)
+        with open(os.path.join(self.pkg, "urdf", f"{ROBOT}.urdf.xacro"), encoding="utf-8") as f:
+            self.assertIn("Mount point for 'sdrac1'", f.read())
+
+    def test_mount_without_sub_base_uses_component_origin(self):
+        base, arm, _, _ = self.design(with_sub_base=False)
+        self.export([base, arm])                 # no joint: fixed to the base
+        self.set_mount()
+        self.export([base, arm])
+        world = self.link_worlds(Pose())["sdrac1_1"]
+        self.assertLess(math.dist(world.t, arm.world.t), 1e-6)
+        self.assertIn("Mount has no 'base_link' subcomponent", self.summary)
+
+    def test_override_parser_mount(self):
+        path = os.path.join(self.out, "o.yaml")
+        with open(path, "w") as f:
+            f.write("a_joint:\n  mount: true  # arm\nb_joint:\n  mount: false\n"
+                    "c_joint:\n  frame: origin\n")
+        o = ue.OverrideFile(path)
+        self.assertEqual(o.mounts, {"a_joint"})
+        self.assertEqual(o.frames, {"c_joint": "origin"})
+
+    @unittest.skipUnless(HAVE_XACRO, "xacro not installed (pip install xacro)")
+    def test_mount_package_combines_with_arm_package(self):
+        base, arm, _, joints = self.design()
+        self.export([base, arm], joints)
+        self.set_mount()
+        self.export([base, arm], joints)
+        # The arm exported on its own, into its own package folder
+        arm_pkg = os.path.join(self.out, "sdrac1")
+        os.makedirs(arm_pkg)
+        self.app.userInterface.folder = arm_pkg
+        arm_base = box("base_link:1", Pose())
+        axis1 = box("axis1:1", Pose(translation=[0, 0, 0.1]))
+        self.export([arm_base, axis1], [FakeJoint("Rev1", axis1, arm_base, REV, axis1.world,
+                                                  [0, 0, 1])])
+        top = os.path.join(self.out, "combined.urdf.xacro")
+        with open(top, "w", encoding="utf-8") as f:
+            f.write('<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="all">\n'
+                    f'  <xacro:include filename="{self.pkg}/urdf/{ROBOT}.urdf.xacro"/>\n'
+                    f'  <xacro:include filename="{arm_pkg}/urdf/sdrac1.urdf.xacro"/>\n'
+                    '  <joint name="m" type="fixed"><parent link="sdrac1_1"/>'
+                    '<child link="sdrac1_base_link"/></joint>\n</robot>\n')
+        root = ET.fromstring(xacro.process_file(top).toxml())
+        self.assertEqual({link.get("name") for link in root.findall("link")},
+                         {BASE_LINK, "sdrac1_1", "sdrac1_base_link", "axis1_1"})
+        types = {j.get("name"): j.get("type") for j in root.findall("joint")}
+        self.assertEqual(types, {"sdrac1_1_joint": "fixed", "axis1_1_joint": "continuous",
+                                 "m": "fixed"})
+
 if __name__ == "__main__":
     unittest.main()

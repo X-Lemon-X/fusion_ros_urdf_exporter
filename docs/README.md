@@ -38,6 +38,7 @@ Proposals
 - ~~[0002 Real joints](proposals/0002-real-joints.md)~~ superseded by 0003
 - [0003 Joints from Fusion, xacro macro and YAML joint config](proposals/0003-joints-from-fusion-xacro.md)
 - [0004 Package folder, name and re-export](proposals/0004-package-folder-and-reexport.md)
+- [0005 Mount points: attach separately exported robots](proposals/0005-mount-points.md)
 - Roadmap items without a proposal yet: [proposals/README.md](proposals/README.md#planned-no-proposal-yet)
 
 ## Conventions

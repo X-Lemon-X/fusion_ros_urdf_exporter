@@ -6,6 +6,25 @@ linked pages; this file is the short version.
 
 ---
 
+## 2026-11-06 — Mount points for modular robots (0005)
+
+**Done**
+- Discussed with the project owner what happens to an arm design inserted
+  as one component: it would become one rigid link, and its joints would be
+  lost without a warning. Decided: export modules on their own and attach
+  them through mount links → [decisions](decisions.md#2026-11-06--modular-robots-through-mount-points).
+- Implemented `mount: true` in `joints_override.yaml`:
+  - an empty link at the inserted design's `base_link`;
+  - the joint to paste, shown in the summary.
+
+  xacro properties are now prefixed with the package name. 31 tests pass,
+  including one that joins two exported packages in real xacro →
+  [0005](proposals/0005-mount-points.md), [joints.md](knowledge/joints.md#mount-points-mount-true).
+
+**Next**
+- Real Fusion: insert sdrac1 into spoon_bot, set `mount: true`, export both
+  and join them in a xacro (Q24).
+
 ## 2026-11-06 — spoon_bot: all joint kinds; limit fix; README guide
 
 **Done**

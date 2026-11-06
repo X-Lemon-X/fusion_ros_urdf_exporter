@@ -2,6 +2,20 @@
 
 Newest first. One entry per decision: what, why, and where it is described.
 
+## 2026-11-06 — Modular robots through mount points
+
+- **A module (arm, gripper, sensor) is exported as its own package and
+  attached to the robot through an empty mount link (`mount: true`).**
+  Nested assemblies are not expanded. Why: each module gets its own
+  reusable URDF; the robot keeps only the frame where the module sits, so
+  one fixed joint in a top-level xacro connects them. Decided by the project
+  owner. → [0005](proposals/0005-mount-points.md)
+- **The mount frame is the inserted design's `base_link` subcomponent**,
+  not the Fusion joint frame. Why: it is the same frame as the module's own
+  `<pkg>_base_link`, so the connecting joint needs no origin.
+- **xacro properties are prefixed with the package name** and passed to the
+  macro. Why: several exported packages must be includable in one file.
+
 ## 2026-11-06 — Implementation choices for 0003 / 0004
 
 - **Link frame from the child-side joint geometry (`geometryOneTransform`).**

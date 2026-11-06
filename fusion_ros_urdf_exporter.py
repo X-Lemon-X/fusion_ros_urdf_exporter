@@ -285,8 +285,11 @@ class ComponentInfo:
     link_name: str
     component_pose: Pose            # component origin in world
     is_base: bool = False
+    component_name: str = ""        # Fusion component (design) name, e.g. "sdrac1"
+    base_sub_pose: Optional[Pose] = None   # world pose of a 'base_link' subcomponent
+    is_mount: bool = False          # empty link where another robot is attached
     link_pose: Pose = field(default_factory=Pose)    # link frame in world
-    frame_source: str = "origin"    # "origin" / "joint"
+    frame_source: str = "origin"    # "origin" / "joint" / "base_link"
     parent: Optional["ComponentInfo"] = None
     joint: Optional[JointSpec] = None
     mesh_file: str = ""
@@ -391,9 +394,9 @@ class PackageFolder:
 class OverrideFile:
     """Reads the user's override file with a tiny line parser (no YAML lib).
 
-    Only two things are needed here: the top-level joint names (to report
-    orphans) and `frame: joint|origin` per joint (applied at export time).
-    Everything else in the file is read by xacro.
+    Only what is applied at export time is read here: the top-level joint
+    names (to report orphans), `frame: joint|origin` and `mount: true|false`
+    per joint. Everything else in the file is read by xacro.
     """
 
     TEMPLATE = """# Your joint settings. Created once by fusion_ros_urdf_exporter and NEVER
@@ -409,6 +412,10 @@ class OverrideFile:
 #   velocity: 1.0                  [rad/s] or [m/s]
 #   frame:    joint | origin       link frame: Fusion joint frame or component
 #                                  origin. Applied on the next export from Fusion.
+#   mount:    true | false         empty link (no mesh, no mass) where a robot
+#                                  exported on its own is attached, e.g. an arm.
+#                                  Frame = its 'base_link' subcomponent.
+#                                  Applied on the next export from Fusion.
 #
 # Example:
 # wheel_left_1_joint:
@@ -418,11 +425,13 @@ class OverrideFile:
 
     TOP_KEY = re.compile(r"^([A-Za-z0-9_]+)\s*:\s*(#.*)?$")
     FRAME = re.compile(r"^\s+frame\s*:\s*['\"]?(joint|origin)['\"]?\s*(#.*)?$")
+    MOUNT = re.compile(r"^\s+mount\s*:\s*(true|false|True|False|yes|no)\s*(#.*)?$")
 
     def __init__(self, path: str):
         self.path = path
         self.keys: List[str] = []
         self.frames: Dict[str, str] = {}
+        self.mounts: Set[str] = set()
         if os.path.isfile(path):
             self._parse()
 
@@ -441,6 +450,12 @@ class OverrideFile:
                 frame = self.FRAME.match(line)
                 if frame and current:
                     self.frames[current] = frame.group(1)
+                mount = self.MOUNT.match(line)
+                if mount and current:
+                    if mount.group(1).lower() in ("true", "yes"):
+                        self.mounts.add(current)
+                    else:
+                        self.mounts.discard(current)
 
     def create_if_missing(self) -> bool:
         if os.path.exists(self.path):
@@ -473,6 +488,18 @@ class FusionModelReader:
         except Exception:  # pylint:disable=broad-except
             return occ.name.split(":")[0]
 
+    @classmethod
+    def _base_sub_pose(cls, occ, base_name: str) -> Optional[Pose]:
+        """World pose of a direct subcomponent named `base_name`, e.g. the
+        base_link of a robot design inserted as one component (mount point)."""
+        try:
+            for child in occ.childOccurrences:
+                if cls._component_name(child) == base_name:
+                    return Pose.from_matrix3d(child.transform2)
+        except Exception:  # pylint:disable=broad-except
+            pass
+        return None
+
     def read(self, package_name: str) -> List[ComponentInfo]:
         root = self.design.rootComponent
         occs = list(root.occurrences)
@@ -503,6 +530,8 @@ class FusionModelReader:
                 component_pose=pose,
                 link_pose=pose,
                 is_base=is_base,
+                component_name=self._component_name(occ),
+                base_sub_pose=None if is_base else self._base_sub_pose(occ, base_name),
             )
             if len(bases) > 1 and is_base:
                 info.warnings.append(f"{len(bases)} components named '{base_name}', used the first.")
@@ -602,7 +631,9 @@ class KinematicTree:
         self.settings = settings
 
     def build(self, components: List[ComponentInfo], joints: List[FusionJoint],
-              frame_overrides: Dict[str, str]) -> List[ComponentInfo]:
+              frame_overrides: Dict[str, str],
+              mounts: Optional[Set[str]] = None) -> List[ComponentInfo]:
+        mounts = mounts or set()
         base = next(c for c in components if c.is_base)
         by_name = {c.fusion_name: c for c in components}
 
@@ -617,15 +648,19 @@ class KinematicTree:
         for comp in components:
             if comp.is_base:
                 continue
+            joint_name = f"{comp.link_name}_joint"
             candidates = edges.get(comp.fusion_name, [])
             if not candidates:
                 comp.parent = base
-                comp.joint = JointSpec(name=f"{comp.link_name}_joint")
+                comp.joint = JointSpec(name=joint_name)
+                if joint_name in mounts:
+                    self._make_mount(comp)
                 continue
             parent, j, frame = self._pick(comp, candidates)
             comp.parent = parent
-            override = frame_overrides.get(f"{comp.link_name}_joint", "joint")
-            if override == "joint" and frame is not None:
+            if joint_name in mounts:
+                self._make_mount(comp)
+            elif frame_overrides.get(joint_name, "joint") == "joint" and frame is not None:
                 comp.link_pose = frame
                 comp.frame_source = "joint"
             elif frame is None:
@@ -635,6 +670,19 @@ class KinematicTree:
 
         self._check_cycles(components, base)
         return self._ordered(components, base)
+
+    def _make_mount(self, comp: ComponentInfo) -> None:
+        """Empty link whose frame matches the root link of the robot exported on its own."""
+        comp.is_mount = True
+        if comp.base_sub_pose is not None:
+            comp.link_pose = comp.base_sub_pose
+            comp.frame_source = "base_link"
+        else:
+            comp.link_pose = comp.component_pose
+            comp.frame_source = "origin"
+            comp.warnings.append(
+                f"Mount has no '{self.settings.base_component_name}' subcomponent - "
+                "link frame = component origin.")
 
     def _edge(self, j: FusionJoint, by_name: Dict[str, ComponentInfo], base: ComponentInfo):
         ends = []
@@ -935,11 +983,13 @@ JOINT_MACRO = """<?xml version="1.0"?>
 <!-- Generated by fusion_ros_urdf_exporter. Overwritten on every export. -->
 <!-- One macro for every joint. Values come from config/joints.yaml and can be
      changed per joint in config/joints_override.yaml.
+     cfg / override are the loaded YAML files, passed in so that several
+     exported packages can be included in one xacro file.
      Note: inside ${} use dict() instead of {} (xacro ends ${ at the first }). -->
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro">
-  <xacro:macro name="fusion_joint" params="name parent child xyz rpy">
-    <xacro:property name="jd" value="${joints_cfg[name]}"/>
-    <xacro:property name="jo" value="${(joints_override or dict()).get(name) or dict()}"/>
+  <xacro:macro name="fusion_joint" params="name parent child xyz rpy cfg override">
+    <xacro:property name="jd" value="${cfg[name]}"/>
+    <xacro:property name="jo" value="${(override or dict()).get(name) or dict()}"/>
     <xacro:property name="jtype" value="${jo.get('type', jd['type'])}"/>
     <xacro:property name="jaxis" value="${jo.get('axis', jd['axis'])}"/>
     <xacro:property name="js" value="${-1 if jo.get('flip', jd['flip']) else 1}"/>
@@ -967,6 +1017,15 @@ JOINT_MACRO = """<?xml version="1.0"?>
 """
 
 
+def mount_snippet(comp: ComponentInfo) -> List[str]:
+    """The joint a user adds to attach the separately exported robot to a mount link."""
+    child = f"{NameSanitizer.sanitize(comp.component_name or comp.link_name)}_base_link"
+    return [f'<joint name="{comp.link_name}_mount" type="fixed">',
+            f'  <parent link="{comp.link_name}"/>',
+            f'  <child link="{child}"/>',
+            '</joint>']
+
+
 class XacroBuilder:
     def __init__(self, package_name: str):
         self.package_name = package_name
@@ -981,9 +1040,10 @@ class XacroBuilder:
         robot.append(ET.Comment(" Generated by fusion_ros_urdf_exporter. Overwritten on every "
                                 "export. Change joints in config/joints_override.yaml. "))
         ET.SubElement(robot, self._x("include"), filename="fusion_joint.xacro")
-        ET.SubElement(robot, self._x("property"), name="joints_cfg",
+        cfg, override = f"{self.package_name}_joints_cfg", f"{self.package_name}_joints_override"
+        ET.SubElement(robot, self._x("property"), name=cfg,
                       value="${xacro.load_yaml('../config/joints.yaml')}")
-        ET.SubElement(robot, self._x("property"), name="joints_override",
+        ET.SubElement(robot, self._x("property"), name=override,
                       value="${xacro.load_yaml('../config/joints_override.yaml')}")
 
         for comp in components:
@@ -993,12 +1053,17 @@ class XacroBuilder:
                 p = comp.pose_in_parent
                 ET.SubElement(robot, self._x("fusion_joint"), name=comp.joint.name,
                               parent=comp.parent.link_name, child=comp.link_name,
-                              xyz=p.xyz_str(), rpy=p.rpy_str())
+                              xyz=p.xyz_str(), rpy=p.rpy_str(),
+                              cfg=f"${{{cfg}}}", override=f"${{{override}}}")
 
         raw = ET.tostring(robot, encoding="unicode")
         return minidom.parseString(raw).toprettyxml(indent="  ")
 
     def _add_link(self, robot: ET.Element, comp: ComponentInfo) -> None:
+        if comp.is_mount:
+            robot.append(ET.Comment(
+                f" Mount point for '{comp.component_name}': attach it in your own xacro with\n"
+                + "\n".join("     " + line for line in mount_snippet(comp)) + " "))
         link = ET.SubElement(robot, "link", name=comp.link_name)
 
         if comp.mesh_file:
@@ -1233,7 +1298,8 @@ class RobotExporter:
         # Read and validate everything before writing anything
         components = FusionModelReader(design, self.settings).read(pkg)
         joints = JointReader(design).read()
-        components = KinematicTree(self.settings).build(components, joints, overrides.frames)
+        components = KinematicTree(self.settings).build(components, joints, overrides.frames,
+                                                        overrides.mounts)
 
         inertia = InertiaCalculator(self.settings)
         meshes = MeshExporter(design, self.settings)
@@ -1249,6 +1315,8 @@ class RobotExporter:
                 progress.message = f"Exporting {comp.fusion_name} (%v of %m)"
                 progress.progressValue = i
                 adsk.doEvents()
+                if comp.is_mount:
+                    continue                    # empty link: no mesh, no inertia
                 comp.inertial = inertia.compute(comp)
                 writer.written.add("meshes/" + meshes.export(comp, mesh_dir))
             progress.progressValue = len(components)
@@ -1276,7 +1344,12 @@ class RobotExporter:
         for c in components:
             mass = f"{c.inertial.mass:.3f} kg" if c.inertial else "no inertia"
             lines.append(f"{c.link_name}  <-  {c.fusion_name}")
-            lines.append(f"    mesh: {c.mesh_frame} frame, {unit.get(c.mesh_scale, c.mesh_scale)}, {mass}")
+            if c.is_mount:
+                lines.append("    mount point: no mesh, no inertia. Attach the other robot with:")
+                lines += ["      " + s for s in mount_snippet(c)]
+            else:
+                lines.append(f"    mesh: {c.mesh_frame} frame, "
+                             f"{unit.get(c.mesh_scale, c.mesh_scale)}, {mass}")
             if c.parent is not None:
                 j = c.joint
                 src = "no joint" if j.source == "none" else f"'{j.source}'"

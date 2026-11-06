@@ -96,6 +96,13 @@ class FakeOccurrence:
         self.isLightBulbOn = visible
         self.entityToken = name
         self.component = _Component(self)
+        self.childOccurrences = []      # FakeOccurrence objects, `world` in world coordinates
+        self.assemblyContext = None
+
+    def add_child(self, child):
+        child.assemblyContext = self
+        self.childOccurrences.append(child)
+        return child
 
     @property
     def transform2(self):

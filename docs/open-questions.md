@@ -25,6 +25,7 @@ When a question is answered, write the answer next to it (or move it to
 | Q4 | Are the masses on rft_robodog sane, i.e. do all bodies have materials? | **No, as exported 2026-11-06:** base 229 kg, one wheel 0.263 kg vs 2.065 kg, lidar no mass. Fix materials in Fusion. | [inertia](knowledge/inertia.md), [robodog](knowledge/robot-rft-robodog.md#notes-per-component) |
 | Q22 | rft_robodog export `ttt1` read no joints. Does the model have joints between the top-level components, and where are they (root component or inside a subcomponent)? | Unknown. Until joints exist in the root component, all links are fixed to the base. | [joints](knowledge/joints.md), [robodog](knowledge/robot-rft-robodog.md) |
 | Q23 | Why does the spoon_bot lidar (linked design, no material) give a 363.5% bbox mismatch although its mesh is placed correctly? | Unknown; maybe the occurrence `boundingBox` includes non-body geometry. Harmless there. | [mesh-export](knowledge/mesh-export.md) |
+| Q24 | Does `transform2` of a child occurrence (`occ.childOccurrences`, e.g. the `base_link` inside an inserted arm design) give its world pose in real Fusion? | Yes (that is the documented purpose of `transform2`). Check by exporting a robot with a mount and the module on its own, then joining them. | [0005](proposals/0005-mount-points.md), [joints](knowledge/joints.md#mount-points-mount-true) |
 
 ## Answered
 

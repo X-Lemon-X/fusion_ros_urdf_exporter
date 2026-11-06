@@ -75,10 +75,13 @@ The joint origin in URDF is `inv(T_parent_link) · T_link`
 ## Generated files
 
 - `urdf/<pkg>.urdf.xacro`: links, then one
-  `<xacro:fusion_joint name parent child xyz rpy/>` per joint. Loads both
-  YAML files with `xacro.load_yaml('../config/…')` (path relative to the
-  xacro file).
-- `urdf/fusion_joint.xacro`: the macro `fusion_joint`. Per key it uses
+  `<xacro:fusion_joint name parent child xyz rpy cfg override/>` per joint.
+  Loads both YAML files with `xacro.load_yaml('../config/…')` (path
+  relative to the xacro file) into the properties `<pkg>_joints_cfg` and
+  `<pkg>_joints_override`, passed to the macro as `cfg` / `override`. So
+  several exported packages can be included in one xacro file.
+- `urdf/fusion_joint.xacro`: the macro `fusion_joint name parent child xyz
+  rpy cfg override`. Per key it uses
   `joints_override.yaml` if set, else `joints.yaml`. `flip: true` multiplies
   the axis by −1 and turns `[lower, upper]` into `[−upper, −lower]`. `fixed`
   gets no `<axis>`; `revolute`/`prismatic` get `<limit lower upper effort
@@ -94,14 +97,48 @@ The joint origin in URDF is `inv(T_parent_link) · T_link`
 
 ## Override file parsing in the exporter (`OverrideFile`)
 
-The exporter needs only two things from the override file, so it uses a line
-parser, not a YAML library:
+The exporter needs only a few things from the override file, so it uses a
+line parser, not a YAML library:
 - top-level keys (`^name:`), to list overrides without a matching joint in
   the summary,
-- `frame: joint|origin` under a key, applied on the next export.
+- `frame: joint|origin` under a key, applied on the next export,
+- `mount: true|false` under a key (also `yes`/`no`), applied on the next
+  export.
 
 Other keys (`type`, `axis`, `flip`, limits, `effort`, `velocity`) are read
 by xacro at launch time, so they need no re-export.
+
+## Mount points (`mount: true`)
+
+Proposal [0005](../proposals/0005-mount-points.md). When the override
+file has `mount: true` on a link's joint, the next export does this:
+
+- The link is written empty: no `<visual>` and no `<inertial>`. Its STL is
+  not exported, so the old file is removed as stale.
+- The link frame (`KinematicTree._make_mount`) is the world pose
+  (`transform2`) of a direct child occurrence whose component is named
+  `base_link` (`FusionModelReader._base_sub_pose`). The frame source is
+  then `base_link`. If there is no such child, the component origin is used
+  (source `origin`), with the warning `Mount has no 'base_link' subcomponent`.
+  The Fusion joint frame and `frame:` are ignored for a mount.
+- The joint to the parent is built as usual: type, axis in the new link
+  frame, limits.
+- The summary prints `mount point: no mesh, no inertia` and the joint to
+  add. The xacro file has the same joint as a comment above the link:
+
+  ```xml
+  <joint name="<link>_mount" type="fixed">
+    <parent link="<link>"/>
+    <child link="<component name>_base_link"/>
+  </joint>
+  ```
+
+  The child name is a guess: the sanitized component (design) name plus
+  `_base_link`. It is right when the module was exported into a folder with
+  that name.
+- Tested: `MountTests.test_mount_package_combines_with_arm_package` includes
+  a robot package with a mount and a separately exported arm package in one
+  xacro. Real xacro 2.1.1 accepts it (2026-11-06).
 
 ## xacro facts (measured with xacro 2.1.1 from PyPI, 2026-11-06)
 
@@ -109,6 +146,11 @@ by xacro at launch time, so they need no re-export.
 - `.get()` works on the loaded data.
 - **Inside `${…}` a `{` breaks the expression**: xacro ends `${` at the
   first `}`. Use `dict()` instead of `{}`.
+- A macro parameter given as one `${expr}` keeps the Python object: a dict
+  or `None` can be passed as `cfg="${name}"`.
+- `xacro:include` of a file whose root is `<robot>` inserts its children;
+  relative `load_yaml` paths in the included file resolve relative to that
+  file.
 
 ## Known limitations (as of 2026-11-06)
 
@@ -119,4 +161,8 @@ by xacro at launch time, so they need no re-export.
   plausible. Whether the parts turn about the right lines in RViz is not
   checked yet (Q21).
 - No `mimic`, no closed loops, no joint types beyond the table above.
+- Joints inside one top-level component (for example an arm design
+  inserted as one component) are not read and not reported. Use a mount
+  point instead ([0005](../proposals/0005-mount-points.md)).
+- Mount points not run in real Fusion yet (Q24).
 - `parent`, `child`, `xyz`, `rpy` can't be overridden; change them in Fusion.
