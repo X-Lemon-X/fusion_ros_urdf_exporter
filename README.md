@@ -12,7 +12,7 @@ A Fusion 360 script that exports the open design to a ready-to-build
 It works for any robot model.
 
 Full documentation: [docs/](docs/README.md).
-
+### Example robot (Spoon bot)
 ![Example robot in Fusion](docs/images/example_bot.png)
 
 ## Install
@@ -40,7 +40,7 @@ camera, a lidar, a vertical slider and a 3-joint arm with a spoon.
 
 ### 1. One component per link
 
-![Browser tree](docs/images/design_parts.png)
+![Components in the Fusion browser](docs/images/file_explorer.png)
 
 - Make a **top-level component named `base_link`**. It becomes the root
   link `<package>_base_link`.
@@ -48,8 +48,15 @@ camera, a lidar, a vertical slider and a 3-joint arm with a spoon.
   name is the occurrence name in lower case, with `:` replaced by `_`
   (`arm_rota:2` → `arm_rota_2`).
 - **Subcomponents are merged into their top-level parent.** Their bodies go
-  into the parent's mesh, mass and inertia. A vendor sensor inserted as a
-  linked design (chain icon) is one link.
+  into the parent's mesh, mass and inertia.
+- **Keep sensors as separate designs.** In spoon_bot the lidar
+  (`STL-19P_3D`) and the camera (`DM9095_OAK-D-LITE...`) are their own
+  designs in the project, next to the robot (`simple_robot`):
+
+  ![Robot, lidar and camera as separate designs](docs/images/design_parts.png)
+
+  Drag them into the robot design. They appear as linked components (chain
+  icon), and each one becomes a single link.
 - **Hidden components are skipped** (light bulb off).
 - **Copies of one component** (`wheel:1` … `wheel:4`) are fine. Each copy
   gets its own link.
@@ -152,8 +159,6 @@ The summary is also printed in **Text Commands**. For each link it shows:
 `base_link`, `wheel_1`) is normal.
 
 ## Output
-
-![Package folder](docs/images/file_explorer.png)
 
 ```
 <package>/
