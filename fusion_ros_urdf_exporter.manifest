@@ -1,0 +1,10 @@
+{
+    "autodeskProduct": "Fusion",
+    "type": "script",
+    "author": "Patryk Dudziński",
+    "description": {
+        "": "Exports visible top-level components to a URDF + ROS 2 description package"
+    },
+    "supportedOS": "windows|mac",
+    "editEnabled": true
+}
