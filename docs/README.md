@@ -15,6 +15,7 @@ Code lives in the repo root; this folder holds explanations, plans and decisions
 | [log.md](log.md) | Project log: meetings and work sessions, newest first. |
 | [decisions.md](decisions.md) | Short log of decisions taken, newest first, with the reason. |
 | [open-questions.md](open-questions.md) | Things we still have to decide or find out. |
+| [images/](images/) | Screenshots used by the root README guide and the robot pages. |
 | [sources.md](sources.md) | Where external information came from (documents processed from `inbox/`, links). |
 
 ## Pages
@@ -30,6 +31,7 @@ Knowledge
 - [Development setup](knowledge/development-setup.md): install, VS Code, tests
 - [Target robot: rft_robodog](knowledge/robot-rft-robodog.md)
 - [Test robot: sdrac1 (6-axis arm)](knowledge/robot-sdrac1.md)
+- [Test robot: spoon_bot (all joint kinds)](knowledge/robot-spoon-bot.md)
 
 Proposals
 - [0001 ROS axis convention option (REP-103)](proposals/0001-ros-axis-convention.md)

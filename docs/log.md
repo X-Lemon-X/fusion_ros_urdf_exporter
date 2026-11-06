@@ -6,6 +6,26 @@ linked pages; this file is the short version.
 
 ---
 
+## 2026-11-06 — spoon_bot: all joint kinds; limit fix; README guide
+
+**Done**
+- Exported spoon_bot from real Fusion: rigid, revolute (with and without
+  limits) and slider joints all read; 12 links, 11 joints →
+  [robot-spoon-bot.md](knowledge/robot-spoon-bot.md).
+- Fixed revolute limits: Fusion returns `rotationValue` in [0, 2π), which
+  shifted the limits by −2π. `wrap_angle_into` now moves the value into
+  the limit range; new test `test_revolute_value_wrapped_to_limits`
+  (27 tests pass) → [joints.md](knowledge/joints.md#type-axis-and-limits-kinematictree_joint_spec).
+- Rewrote the root `README.md` as a short guide for preparing a model in
+  Fusion, with screenshots in [images/](images/).
+
+**Found**
+- The lidar `Mesh frame check uncertain` warning is a false alarm there (Q23).
+- Right wheels turn about −Y, left about +Y: flip them in the override.
+
+**Next**
+- Re-export spoon_bot with the fix and check the joints in RViz (Q21).
+
 ## 2026-11-06 — First export with joints (6-axis arm `sdrac1`)
 
 **Done**

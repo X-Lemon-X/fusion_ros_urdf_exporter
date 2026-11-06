@@ -221,3 +221,6 @@ __marimo__/
 
 # Fusion 360 script manifest (overrides the PyInstaller *.manifest rule above)
 !fusion_ros_urdf_exporter.manifest
+
+
+package_tests

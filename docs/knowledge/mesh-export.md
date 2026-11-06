@@ -44,6 +44,11 @@ Fusion writes the STL in. It measures that after the export.
   and it was reported as "world frame"
   ([robot-sdrac1.md](robot-sdrac1.md#export-sdrac1-2026-11-06)). Meshes
   105 MB.
+- spoon_bot (2026-11-06): copies of one component (`wheel:1` … `wheel:4`)
+  give identical STLs, in the component's own frame. The lidar (a linked
+  design without material) got `Mesh frame check uncertain (363.5% bbox
+  mismatch)`, but its mesh is in the right place (Q23,
+  [robot-spoon-bot.md](robot-spoon-bot.md#export-spoon_bot-2026-11-06)).
 
 ## Known limitations (as of 2026-11-06)
 
@@ -52,6 +57,6 @@ Fusion writes the STL in. It measures that after the export.
   are nearly the same (e.g. a symmetric part rotated about its centre),
   both frames score alike and the choice can be wrong. Not seen yet; not
   tested.
-- Checked on two real exports only ([above](#measured-in-real-fusion-2026-11-06-rft_robodog-export-ttt1)).
+- Checked on three real exports only ([above](#measured-in-real-fusion-2026-11-06-rft_robodog-export-ttt1)).
   Whether the summary showed "uncertain" warnings is not confirmed (Q2 in
   [open-questions.md](../open-questions.md)).

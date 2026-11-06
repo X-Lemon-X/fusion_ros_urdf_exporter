@@ -350,6 +350,17 @@ class JointTreeTests(ExportTestBase):
         self.check_geometry(occs, {"base_link:1": BASE_LINK, "link1:1": "link1_1",
                                    "link2:1": "link2_1", "link3:1": "link3_1"}, Pose())
 
+    def test_revolute_value_wrapped_to_limits(self):
+        # Real Fusion (spoon_bot, 2026-11-06) returned rotationValue in [0, 2*pi)
+        # while the limits are signed: -50 deg came back as 310 deg.
+        occs, joints = self.arm(value_deg=-50.0)
+        joints[0].jointMotion.rotationValue = math.radians(310)
+        self.export(occs, joints)
+        _, _, cfg = self.read_package()
+        j1 = cfg["link1_1_joint"]
+        self.assertAlmostEqual(j1["lower"], math.radians(-40), places=6)
+        self.assertAlmostEqual(j1["upper"], math.radians(140), places=6)
+
     def test_as_built_joint(self):
         base = box("base_link:1", Pose())
         w = box("wheel:1", Pose(rot_rpy(math.pi / 2, 0, 0), [0, 0.2, 0]))

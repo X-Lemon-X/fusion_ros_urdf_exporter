@@ -57,7 +57,7 @@ The joint origin in URDF is `inv(T_parent_link) · T_link`
 | Fusion | URDF | Limits |
 |---|---|---|
 | rigid | `fixed` | — |
-| revolute, both limits enabled | `revolute` | `lower = min − rotationValue`, `upper = max − rotationValue` |
+| revolute, both limits enabled | `revolute` | `lower = min − v`, `upper = max − v`; `v` is `rotationValue` shifted by whole turns into [min, max] (`wrap_angle_into`), warning if still outside |
 | revolute, 0 or 1 limit | `continuous` (warning if exactly 1) | — |
 | slider, both limits | `prismatic` | `min − slideValue`, `max − slideValue` |
 | slider, not both | `prismatic` + warning | `0.0`, `0.0` |
@@ -112,10 +112,11 @@ by xacro at launch time, so they need no re-export.
 
 ## Known limitations (as of 2026-11-06)
 
-- Run in real Fusion on one model with joints: sdrac1, 6 revolute joints,
-  all read, tree and axes plausible
-  ([robot-sdrac1.md](robot-sdrac1.md#forward-kinematics-at-zero-computed-from-the-xacro-2026-11-06)).
-  Whether the parts turn about the right lines in RViz is not checked yet
-  (Q21). Joint limits and slider joints not tried in real Fusion.
+- Run in real Fusion on two models with joints: sdrac1 (6 revolute,
+  [robot-sdrac1.md](robot-sdrac1.md)) and spoon_bot (rigid, revolute with
+  and without limits, slider with limits,
+  [robot-spoon-bot.md](robot-spoon-bot.md)). Tree, axes and limits are
+  plausible. Whether the parts turn about the right lines in RViz is not
+  checked yet (Q21).
 - No `mimic`, no closed loops, no joint types beyond the table above.
 - `parent`, `child`, `xyz`, `rpy` can't be overridden; change them in Fusion.

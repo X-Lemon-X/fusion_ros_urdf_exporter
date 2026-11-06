@@ -134,6 +134,16 @@ def fmt_num(v: float) -> str:
     return f"{clean(v):.9g}"
 
 
+def wrap_angle_into(value: float, lower: float, upper: float) -> float:
+    """Shift `value` by whole turns so it lies in [lower, upper], or as close as possible.
+
+    Fusion returns `rotationValue` in [0, 2*pi) but the limits signed, e.g. -50 deg
+    comes back as 310 deg with limits -90..90 deg.
+    """
+    mid = 0.5 * (lower + upper)
+    return value - 2.0 * math.pi * round((value - mid) / (2.0 * math.pi))
+
+
 def fmt_yaml_float(v: float) -> str:
     """Float that every YAML parser reads as a float (always has a '.')."""
     s = f"{clean(v, 1e-9):.9f}".rstrip("0")
@@ -685,11 +695,15 @@ class KinematicTree:
         else:
             spec.axis = [clean(v, 1e-9) for v in mat_vec(transpose(comp.link_pose.R), axis)]
 
-        both = j.lower is not None and j.upper is not None
+        lo, up = j.lower, j.upper
         if j.fusion_type == types.RevoluteJointType:
-            if both:
+            if lo is not None and up is not None:
                 spec.joint_type = "revolute"
-                spec.lower, spec.upper = j.lower - j.value, j.upper - j.value
+                value = wrap_angle_into(j.value, lo, up)
+                if not lo - 1e-9 <= value <= up + 1e-9:
+                    comp.warnings.append(f"Joint '{j.name}': current angle is outside its "
+                                         "limits - check lower/upper.")
+                spec.lower, spec.upper = lo - value, up - value
             else:
                 spec.joint_type = "continuous"
                 if j.lower is not None or j.upper is not None:
@@ -699,8 +713,8 @@ class KinematicTree:
                 self._check_axis_line(comp, j, axis)
         else:
             spec.joint_type = "prismatic"
-            if both:
-                spec.lower, spec.upper = j.lower - j.value, j.upper - j.value
+            if lo is not None and up is not None:
+                spec.lower, spec.upper = lo - j.value, up - j.value
             else:
                 comp.warnings.append(f"Slider '{j.name}' has no limits - set lower/upper "
                                      "in joints_override.yaml.")

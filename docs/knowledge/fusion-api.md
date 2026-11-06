@@ -45,6 +45,10 @@ Checked against the Autodesk API reference on 2026-11-06 (see
   `isMaximumValueEnabled`, `maximumValue`, in cm or rad.
 - `JointGeometry`: `origin`, `primaryAxisVector` (Z), `secondaryAxisVector`
   (X), `thirdAxisVector` (Y).
+- **Measured 2026-11-06 (spoon_bot):** `rotationValue` comes back in
+  [0, 2π) even when Fusion shows a negative angle (−5.4° → 354.6°), while
+  `rotationLimits` are signed (−90° … 180°). `slideValue` is signed
+  (−4.205 cm). See [robot-spoon-bot.md](robot-spoon-bot.md#joint-values-and-limits).
 - **Not documented:** the coordinate space of the axis vectors and the
   transforms. The exporter assumes world (root) coordinates (Q21).
 
