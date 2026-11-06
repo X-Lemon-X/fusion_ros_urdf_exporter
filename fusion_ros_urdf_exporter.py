@@ -1,42 +1,49 @@
-"""Fusion 360 -> URDF + ROS 2 (ament_python) description package.
+"""Fusion 360 -> xacro + ROS 2 (ament_python) description package.
 
 How it works
 ------------
+* Choose (or create) an empty folder. Its name is the ROS package name and
+  the robot name. The root link is ``<pkg>_base_link``.
 * The design must contain a visible top-level component named ``base_link``.
-  It becomes the robot root link ``<robot_name>_base_link``.
-* Every other *visible top-level* component becomes one link attached to the
-  base with a ``fixed`` joint. Subcomponents are not links of their own; they
-  are part of their parent's mesh and inertia.
-* Each link frame = origin of its Fusion component. Joint origins are the
-  component poses relative to ``base_link``. Axes are kept 1:1 with Fusion.
-* Meshes are exported as binary STL (medium refinement). After export the
-  script reads each STL's bounding box and compares it with Fusion's bounding
-  boxes to detect whether Fusion wrote the mesh in world or local coordinates
-  and in mm / cm / m. The visual origin and mesh scale are set accordingly.
-* Inertia comes from Fusion's physical properties (assign materials to bodies,
-  otherwise masses will be wrong).
+* Every other *visible top-level* component becomes one link. Subcomponents
+  are part of their top-level parent's mesh and inertia.
+* Joints are read from Fusion (joints and as-built joints of the root
+  component). Component one of a joint is the child, component two the
+  parent. A component without a joint is attached to ``<pkg>_base_link``
+  with a fixed joint. Rigid -> fixed, revolute -> revolute / continuous,
+  slider -> prismatic, anything else -> fixed (with a warning).
+* Link frame = the Fusion joint frame when the component has a joint,
+  otherwise the component origin.
+* Meshes are binary STL. Each STL's frame (world/local) and unit (mm/cm/m)
+  is detected from its bounding box.
+* Inertia comes from Fusion's physical properties (assign materials!).
+* Joint settings live in ``config/joints.yaml`` (generated) and
+  ``config/joints_override.yaml`` (yours, never overwritten).
 
-Output (<dir>/<robot_name>/ is a ROS 2 ament_python package)::
+Output (<folder> is a ROS 2 ament_python package)::
 
-    <robot_name>/
+    <pkg>/
       package.xml, setup.py, setup.cfg
-      resource/<robot_name>
-      <robot_name>/__init__.py
-      urdf/<robot_name>.urdf
+      resource/<pkg>
+      <pkg>/__init__.py
+      urdf/<pkg>.urdf.xacro
+      urdf/fusion_joint.xacro
+      config/joints.yaml
+      config/joints_override.yaml
       meshes/*.stl
       launch/display.launch.py
       rviz/display.rviz
+      .fusion_urdf_export          (list of generated files)
 """
 
 import math
 import os
 import re
-import shutil
 import struct
 import traceback
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Dict, List, Optional, Sequence, Set, Tuple
 from xml.dom import minidom
 
 import adsk.core
@@ -47,6 +54,10 @@ ui = app.userInterface
 
 CM_TO_M = 0.01            # Fusion API lengths are always in cm
 KGCM2_TO_KGM2 = 1e-4      # Fusion API inertia is in kg*cm^2
+
+MARKER_FILE = ".fusion_urdf_export"
+OVERRIDE_FILE = "config/joints_override.yaml"
+XACRO_NS = "http://www.ros.org/wiki/xacro"
 
 Vec3 = List[float]
 Mat3 = List[List[float]]
@@ -63,6 +74,11 @@ class ExportSettings:
     inertia_accuracy: int = adsk.fusion.CalculationAccuracy.MediumCalculationAccuracy
     # Relative bbox mismatch above which the mesh frame/unit detection warns
     frame_check_tolerance: float = 0.05
+    # Distance [m] of a revolute axis line from the link origin above which we warn
+    axis_offset_tolerance: float = 1e-4
+    # Joint defaults (Fusion has no effort / velocity)
+    default_effort: float = 10.0
+    default_velocity: float = 1.0
     # package.xml metadata
     package_version: str = "0.0.1"
     maintainer: str = "todo"
@@ -85,6 +101,27 @@ def transpose(a: Mat3) -> Mat3:
     return [[a[j][i] for j in range(3)] for i in range(3)]
 
 
+def vec_sub(a: Sequence[float], b: Sequence[float]) -> Vec3:
+    return [x - y for x, y in zip(a, b)]
+
+
+def dot(a: Sequence[float], b: Sequence[float]) -> float:
+    return sum(x * y for x, y in zip(a, b))
+
+
+def cross(a: Sequence[float], b: Sequence[float]) -> Vec3:
+    return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]
+
+
+def norm(a: Sequence[float]) -> float:
+    return math.sqrt(dot(a, a))
+
+
+def normalized(a: Sequence[float]) -> Optional[Vec3]:
+    n = norm(a)
+    return [x / n for x in a] if n > 1e-12 else None
+
+
 def clean(v: float, eps: float = 1e-12) -> float:
     return 0.0 if abs(v) < eps else v
 
@@ -95,6 +132,12 @@ def fmt_pose(v: float) -> str:
 
 def fmt_num(v: float) -> str:
     return f"{clean(v):.9g}"
+
+
+def fmt_yaml_float(v: float) -> str:
+    """Float that every YAML parser reads as a float (always has a '.')."""
+    s = f"{clean(v, 1e-9):.9f}".rstrip("0")
+    return s + "0" if s.endswith(".") else s
 
 
 # =============================================================================
@@ -150,6 +193,9 @@ class Pose:
 # =============================================================================
 # Names
 # =============================================================================
+PACKAGE_NAME_RE = re.compile(r"[a-z][a-z0-9_]*")
+
+
 class NameSanitizer:
     """Lowercase letters, digits and '_' only; must start with a letter."""
 
@@ -196,19 +242,55 @@ class InertialInfo:
 
 
 @dataclass
+class FusionJoint:
+    """One Fusion joint or as-built joint, in SI units and world coordinates."""
+    name: str
+    kind: str                       # "joint" / "as-built joint"
+    fusion_type: Optional[int]      # adsk.fusion.JointTypes value, None if unknown
+    occ_one: object                 # occurrence (None = root component)
+    occ_two: object
+    frame_one: Optional[Pose]       # joint geometry on occurrence one's side
+    frame_two: Optional[Pose]       # joint geometry on occurrence two's side
+    axis_world: Optional[Vec3] = None
+    value: float = 0.0              # current joint value [rad] or [m]
+    lower: Optional[float] = None   # Fusion limits [rad] or [m], None = disabled
+    upper: Optional[float] = None
+
+
+@dataclass
+class JointSpec:
+    """URDF joint between a link and its parent."""
+    name: str
+    joint_type: str = "fixed"       # fixed / revolute / continuous / prismatic
+    axis: Vec3 = field(default_factory=lambda: [0.0, 0.0, 1.0])
+    lower: float = 0.0
+    upper: float = 0.0
+    source: str = "none"            # Fusion joint name, or "none"
+
+
+@dataclass
 class ComponentInfo:
     occurrence: object
     fusion_name: str
     link_name: str
-    world_pose: Pose
+    component_pose: Pose            # component origin in world
     is_base: bool = False
-    pose_in_base: Pose = field(default_factory=Pose)
+    link_pose: Pose = field(default_factory=Pose)    # link frame in world
+    frame_source: str = "origin"    # "origin" / "joint"
+    parent: Optional["ComponentInfo"] = None
+    joint: Optional[JointSpec] = None
     mesh_file: str = ""
     visual_pose: Pose = field(default_factory=Pose)
     mesh_scale: float = 0.001
-    mesh_frame: str = ""        # "world" / "local"
+    mesh_frame: str = ""            # "world" / "local"
     inertial: Optional[InertialInfo] = None
     warnings: List[str] = field(default_factory=list)
+
+    @property
+    def pose_in_parent(self) -> Pose:
+        if self.parent is None:
+            return Pose()
+        return self.parent.link_pose.inverse() * self.link_pose
 
 
 class ExportCancelled(Exception):
@@ -216,59 +298,172 @@ class ExportCancelled(Exception):
 
 
 class ExportError(Exception):
-    """Problem the user can fix in the design."""
+    """Problem the user can fix in the design or the folder choice."""
 
 
 # =============================================================================
 # User interaction
 # =============================================================================
 class UserPrompt:
-    def ask_directory(self) -> str:
+    def ask_package_folder(self) -> str:
         dlg = ui.createFolderDialog()
-        dlg.title = "Choose where to create the robot package"
+        dlg.title = "Choose or create the package folder (its name = package name)"
         if dlg.showDialog() != adsk.core.DialogResults.DialogOK:
             raise ExportCancelled()
         return dlg.folder
-
-    def ask_robot_name(self, default: str) -> str:
-        value, cancelled = ui.inputBox(
-            "Robot name (used for the folder, ROS package and links):",
-            "Robot name", default)
-        if cancelled:
-            raise ExportCancelled()
-        if not value.strip():
-            raise ExportError("Robot name cannot be empty.")
-        return NameSanitizer.sanitize(value)
-
-    def confirm_overwrite(self, path: str) -> bool:
-        result = ui.messageBox(
-            f"Folder already exists:\n{path}\n\n"
-            "Yes = delete it completely and export again\n"
-            "No = stop",
-            "Folder exists",
-            adsk.core.MessageBoxButtonTypes.YesNoButtonType,
-            adsk.core.MessageBoxIconTypes.WarningIconType)
-        return result == adsk.core.DialogResults.DialogYes
 
     def show(self, text: str, title: str = "URDF exporter") -> None:
         ui.messageBox(text, title)
 
 
 # =============================================================================
+# Package folder (name, empty / previous export / foreign, generated files)
+# =============================================================================
+class PackageFolder:
+    def __init__(self, path: str):
+        self.path = os.path.normpath(path)
+        self.name = os.path.basename(self.path)
+        self.previous_files: List[str] = []
+        self.is_previous_export = False
+
+    def check(self) -> None:
+        if not PACKAGE_NAME_RE.fullmatch(self.name):
+            raise ExportError(
+                f"Folder name '{self.name}' is not a valid ROS package name.\n"
+                "Use lowercase letters, digits and '_', starting with a letter,\n"
+                f"e.g. '{NameSanitizer.sanitize(self.name)}'.")
+        if not os.path.isdir(self.path):
+            raise ExportError(f"Folder does not exist:\n{self.path}")
+        entries = os.listdir(self.path)
+        if not entries:
+            return
+        if MARKER_FILE in entries:
+            self.is_previous_export = True
+            self.previous_files = self._read_marker()
+            return
+        raise ExportError(
+            f"Folder is not empty and was not created by this exporter:\n{self.path}\n\n"
+            "Choose an empty folder (create a new one in the dialog) "
+            "or the folder of a previous export.")
+
+    def _read_marker(self) -> List[str]:
+        with open(os.path.join(self.path, MARKER_FILE), encoding="utf-8") as f:
+            return [line.strip() for line in f if line.strip() and not line.startswith("#")]
+
+    def abs(self, rel: str) -> str:
+        return os.path.join(self.path, *rel.split("/"))
+
+    def remove_stale(self, written: Set[str]) -> List[str]:
+        """Delete files from the previous export that were not written again."""
+        removed = []
+        for rel in self.previous_files:
+            if rel in written or rel == OVERRIDE_FILE:
+                continue
+            path = self.abs(rel)
+            if os.path.isfile(path):
+                os.remove(path)
+                removed.append(rel)
+                folder = os.path.dirname(path)
+                if folder != self.path and os.path.isdir(folder) and not os.listdir(folder):
+                    os.rmdir(folder)
+        return removed
+
+    def write_marker(self, written: Set[str]) -> None:
+        with open(os.path.join(self.path, MARKER_FILE), "w", encoding="utf-8", newline="\n") as f:
+            f.write("# Files generated by fusion_ros_urdf_exporter. Do not edit.\n")
+            for rel in sorted(written):
+                f.write(rel + "\n")
+
+
+# =============================================================================
+# joints_override.yaml (only what the exporter itself needs from it)
+# =============================================================================
+class OverrideFile:
+    """Reads the user's override file with a tiny line parser (no YAML lib).
+
+    Only two things are needed here: the top-level joint names (to report
+    orphans) and `frame: joint|origin` per joint (applied at export time).
+    Everything else in the file is read by xacro.
+    """
+
+    TEMPLATE = """# Your joint settings. Created once by fusion_ros_urdf_exporter and NEVER
+# overwritten. Any key set here wins over config/joints.yaml.
+#
+# Keys per joint (all optional):
+#   type:     fixed | revolute | continuous | prismatic
+#   axis:     [x, y, z]            in the child link frame
+#   flip:     true | false         reverses the axis (and the limits)
+#   lower:    -1.0                 [rad] or [m]
+#   upper:    1.0                  [rad] or [m]
+#   effort:   10.0                 [N m] or [N]
+#   velocity: 1.0                  [rad/s] or [m/s]
+#   frame:    joint | origin       link frame: Fusion joint frame or component
+#                                  origin. Applied on the next export from Fusion.
+#
+# Example:
+# wheel_left_1_joint:
+#   type: continuous
+#   flip: true
+"""
+
+    TOP_KEY = re.compile(r"^([A-Za-z0-9_]+)\s*:\s*(#.*)?$")
+    FRAME = re.compile(r"^\s+frame\s*:\s*['\"]?(joint|origin)['\"]?\s*(#.*)?$")
+
+    def __init__(self, path: str):
+        self.path = path
+        self.keys: List[str] = []
+        self.frames: Dict[str, str] = {}
+        if os.path.isfile(path):
+            self._parse()
+
+    def _parse(self) -> None:
+        current = None
+        with open(self.path, encoding="utf-8") as f:
+            for line in f:
+                line = line.rstrip("\n")
+                if not line.strip() or line.lstrip().startswith("#"):
+                    continue
+                top = self.TOP_KEY.match(line)
+                if top:
+                    current = top.group(1)
+                    self.keys.append(current)
+                    continue
+                frame = self.FRAME.match(line)
+                if frame and current:
+                    self.frames[current] = frame.group(1)
+
+    def create_if_missing(self) -> bool:
+        if os.path.exists(self.path):
+            return False
+        os.makedirs(os.path.dirname(self.path), exist_ok=True)
+        with open(self.path, "w", encoding="utf-8", newline="\n") as f:
+            f.write(self.TEMPLATE)
+        return True
+
+
+# =============================================================================
 # Reading the Fusion design
 # =============================================================================
+def _top_level(occ):
+    """Top-level occurrence that contains `occ` (None stays None = root)."""
+    while occ is not None and getattr(occ, "assemblyContext", None) is not None:
+        occ = occ.assemblyContext
+    return occ
+
+
 class FusionModelReader:
     def __init__(self, design, settings: ExportSettings):
         self.design = design
         self.settings = settings
 
-    def _component_name(self, occ) -> str:
+    @staticmethod
+    def _component_name(occ) -> str:
         try:
             return occ.component.name
         except Exception:  # pylint:disable=broad-except
             return occ.name.split(":")[0]
 
-    def read(self, robot_name: str) -> List[ComponentInfo]:
+    def read(self, package_name: str) -> List[ComponentInfo]:
         root = self.design.rootComponent
         occs = list(root.occurrences)
         base_name = self.settings.base_component_name
@@ -284,30 +479,270 @@ class FusionModelReader:
             occs = [o for o in occs if o.isLightBulbOn]
 
         namer = UniqueNamer()
-        base_link_name = f"{robot_name}_base_link"
+        base_link_name = f"{package_name}_base_link"
         namer.reserve(base_link_name)
-
-        base_world = Pose.from_matrix3d(base_occ.transform2)
-        base_inv = base_world.inverse()
 
         result: List[ComponentInfo] = []
         for occ in occs:
-            is_base = occ is base_occ or occ.entityToken == base_occ.entityToken
-            world = Pose.from_matrix3d(occ.transform2)
+            is_base = occ is base_occ or occ.name == base_occ.name
+            pose = Pose.from_matrix3d(occ.transform2)
             info = ComponentInfo(
                 occurrence=occ,
                 fusion_name=occ.name,
                 link_name=base_link_name if is_base else namer.make(occ.name),
-                world_pose=world,
+                component_pose=pose,
+                link_pose=pose,
                 is_base=is_base,
-                pose_in_base=Pose() if is_base else base_inv * world,
             )
             if len(bases) > 1 and is_base:
                 info.warnings.append(f"{len(bases)} components named '{base_name}', used the first.")
             result.append(info)
-
-        result.sort(key=lambda c: (not c.is_base, c.link_name))
         return result
+
+
+class JointReader:
+    """Reads joints and as-built joints of the root component."""
+
+    def __init__(self, design):
+        self.design = design
+
+    def read(self) -> List[FusionJoint]:
+        root = self.design.rootComponent
+        result: List[FusionJoint] = []
+        for kind, attr in (("joint", "joints"), ("as-built joint", "asBuiltJoints")):
+            collection = getattr(root, attr, None)
+            if collection is None:
+                continue
+            for j in collection:
+                if self._safe(lambda: j.isSuppressed, False):
+                    continue
+                result.append(self._read_one(j, kind))
+        return result
+
+    @staticmethod
+    def _safe(fn, default=None):
+        try:
+            return fn()
+        except Exception:  # pylint:disable=broad-except
+            return default
+
+    @staticmethod
+    def _pose(fn) -> Optional[Pose]:
+        try:
+            m = fn()
+            return Pose.from_matrix3d(m) if m is not None else None
+        except Exception:  # pylint:disable=broad-except
+            return None
+
+    @staticmethod
+    def _limits(limits, scale: float) -> Tuple[Optional[float], Optional[float]]:
+        if limits is None:
+            return None, None
+        lo = limits.minimumValue * scale if limits.isMinimumValueEnabled else None
+        hi = limits.maximumValue * scale if limits.isMaximumValueEnabled else None
+        return lo, hi
+
+    def _read_one(self, j, kind: str) -> FusionJoint:
+        types = adsk.fusion.JointTypes
+        motion = self._safe(lambda: j.jointMotion)
+        fusion_type = self._safe(lambda: motion.jointType) if motion is not None else None
+        if kind == "joint":
+            frame_one = self._pose(lambda: j.geometryOneTransform)
+            frame_two = self._pose(lambda: j.geometryTwoTransform)
+        else:
+            frame_one = frame_two = self._pose(lambda: j.transform)
+
+        info = FusionJoint(
+            name=self._safe(lambda: j.name, "?"),
+            kind=kind,
+            fusion_type=fusion_type,
+            occ_one=self._safe(lambda: j.occurrenceOne),
+            occ_two=self._safe(lambda: j.occurrenceTwo),
+            frame_one=frame_one,
+            frame_two=frame_two,
+        )
+        if fusion_type == types.RevoluteJointType:
+            v = self._safe(lambda: motion.rotationAxisVector)
+            info.axis_world = [v.x, v.y, v.z] if v is not None else None
+            info.value = self._safe(lambda: motion.rotationValue, 0.0) or 0.0
+            info.lower, info.upper = self._limits(self._safe(lambda: motion.rotationLimits), 1.0)
+        elif fusion_type == types.SliderJointType:
+            v = self._safe(lambda: motion.slideDirectionVector)
+            info.axis_world = [v.x, v.y, v.z] if v is not None else None
+            info.value = (self._safe(lambda: motion.slideValue, 0.0) or 0.0) * CM_TO_M
+            info.lower, info.upper = self._limits(self._safe(lambda: motion.slideLimits), CM_TO_M)
+        return info
+
+
+# =============================================================================
+# Kinematic tree
+# =============================================================================
+class KinematicTree:
+    """Turns Fusion joints into a tree rooted at the base link.
+
+    * component one = child, component two = parent
+    * no parent -> fixed to the base link
+    * link frame = joint frame (or the component origin, see frame_overrides)
+    """
+
+    TYPE_NAMES = {0: "rigid", 1: "revolute", 2: "slider", 3: "cylindrical",
+                  4: "pin-slot", 5: "planar", 6: "ball"}
+
+    def __init__(self, settings: ExportSettings):
+        self.settings = settings
+
+    def build(self, components: List[ComponentInfo], joints: List[FusionJoint],
+              frame_overrides: Dict[str, str]) -> List[ComponentInfo]:
+        base = next(c for c in components if c.is_base)
+        by_name = {c.fusion_name: c for c in components}
+
+        # child -> list of (parent, joint, child-side frame)
+        edges: Dict[str, List[Tuple[ComponentInfo, FusionJoint, Optional[Pose]]]] = {}
+        for j in joints:
+            edge = self._edge(j, by_name, base)
+            if edge:
+                child, parent, frame = edge
+                edges.setdefault(child.fusion_name, []).append((parent, j, frame))
+
+        for comp in components:
+            if comp.is_base:
+                continue
+            candidates = edges.get(comp.fusion_name, [])
+            if not candidates:
+                comp.parent = base
+                comp.joint = JointSpec(name=f"{comp.link_name}_joint")
+                continue
+            parent, j, frame = self._pick(comp, candidates)
+            comp.parent = parent
+            override = frame_overrides.get(f"{comp.link_name}_joint", "joint")
+            if override == "joint" and frame is not None:
+                comp.link_pose = frame
+                comp.frame_source = "joint"
+            elif frame is None:
+                comp.warnings.append(f"Geometry of joint '{j.name}' not readable - "
+                                     "link frame = component origin.")
+            comp.joint = self._joint_spec(comp, j)
+
+        self._check_cycles(components, base)
+        return self._ordered(components, base)
+
+    def _edge(self, j: FusionJoint, by_name: Dict[str, ComponentInfo], base: ComponentInfo):
+        ends = []
+        for occ in (j.occ_one, j.occ_two):
+            top = _top_level(occ)
+            if top is None:
+                ends.append(base)              # root component -> base link
+                continue
+            comp = by_name.get(top.name)
+            if comp is None:                   # hidden component
+                ends.append(None)
+                continue
+            ends.append(comp)
+        one, two = ends
+        if one is None or two is None:
+            visible = one or two
+            if visible is not None and not visible.is_base:
+                visible.warnings.append(f"Joint '{j.name}' goes to a hidden component - ignored.")
+            return None
+        if one is two:
+            return None                        # internal to one link
+        if one.is_base:
+            two.warnings.append(f"Joint '{j.name}' has base_link as component one - "
+                                "direction flipped.")
+            return two, one, j.frame_two
+        return one, two, j.frame_one
+
+    def _pick(self, comp: ComponentInfo, candidates):
+        parents = {p.fusion_name for p, _, _ in candidates}
+        if len(parents) > 1:
+            listing = ", ".join(f"'{j.name}' -> {p.fusion_name}" for p, j, _ in candidates)
+            raise ExportError(
+                f"Component '{comp.fusion_name}' has more than one parent: {listing}.\n"
+                "In each joint, component one is the child. Remove or suppress "
+                "the extra joints, or hide a component.")
+        if len(candidates) > 1:
+            moving = [c for c in candidates if c[1].fusion_type != adsk.fusion.JointTypes.RigidJointType]
+            chosen = moving[0] if moving else candidates[0]
+            comp.warnings.append(
+                f"{len(candidates)} joints to the same parent - used '{chosen[1].name}'.")
+            return chosen
+        return candidates[0]
+
+    def _joint_spec(self, comp: ComponentInfo, j: FusionJoint) -> JointSpec:
+        types = adsk.fusion.JointTypes
+        spec = JointSpec(name=f"{comp.link_name}_joint", source=j.name)
+        if j.fusion_type == types.RigidJointType:
+            return spec
+        if j.fusion_type not in (types.RevoluteJointType, types.SliderJointType):
+            kind = self.TYPE_NAMES.get(j.fusion_type, "unknown")
+            comp.warnings.append(f"Joint '{j.name}' is {kind} - exported as fixed.")
+            return spec
+
+        axis = normalized(j.axis_world) if j.axis_world else None
+        if axis is None:
+            comp.warnings.append(f"Axis of joint '{j.name}' not readable - using Z.")
+            spec.axis = [0.0, 0.0, 1.0]
+        else:
+            spec.axis = [clean(v, 1e-9) for v in mat_vec(transpose(comp.link_pose.R), axis)]
+
+        both = j.lower is not None and j.upper is not None
+        if j.fusion_type == types.RevoluteJointType:
+            if both:
+                spec.joint_type = "revolute"
+                spec.lower, spec.upper = j.lower - j.value, j.upper - j.value
+            else:
+                spec.joint_type = "continuous"
+                if j.lower is not None or j.upper is not None:
+                    comp.warnings.append(f"Joint '{j.name}' has only one limit - exported "
+                                         "as continuous.")
+            if comp.frame_source == "origin" and axis is not None:
+                self._check_axis_line(comp, j, axis)
+        else:
+            spec.joint_type = "prismatic"
+            if both:
+                spec.lower, spec.upper = j.lower - j.value, j.upper - j.value
+            else:
+                comp.warnings.append(f"Slider '{j.name}' has no limits - set lower/upper "
+                                     "in joints_override.yaml.")
+        return spec
+
+    def _check_axis_line(self, comp: ComponentInfo, j: FusionJoint, axis: Vec3) -> None:
+        frame = j.frame_two or j.frame_one
+        if frame is None:
+            return
+        d = norm(cross(vec_sub(comp.link_pose.t, frame.t), axis))
+        if d > self.settings.axis_offset_tolerance:
+            comp.warnings.append(
+                f"Axis of joint '{j.name}' is {d * 1000:.1f} mm from the component origin - "
+                "the part will rotate about the wrong point (use frame: joint).")
+
+    @staticmethod
+    def _check_cycles(components: List[ComponentInfo], base: ComponentInfo) -> None:
+        for comp in components:
+            seen = []
+            node = comp
+            while node is not None and not node.is_base:
+                if node in seen:
+                    loop = seen[seen.index(node):]
+                    names = " -> ".join(f"{c.fusion_name} ('{c.joint.source}')" for c in loop)
+                    raise ExportError(f"Joints form a closed loop: {names}.\n"
+                                      "URDF needs a tree. Suppress one joint of the loop.")
+                seen.append(node)
+                node = node.parent
+
+    @staticmethod
+    def _ordered(components: List[ComponentInfo], base: ComponentInfo) -> List[ComponentInfo]:
+        """Base first, then parents before children, siblings by link name."""
+        children: Dict[int, List[ComponentInfo]] = {}
+        for c in components:
+            if c.parent is not None:
+                children.setdefault(id(c.parent), []).append(c)
+        ordered, queue = [], [base]
+        while queue:
+            node = queue.pop(0)
+            ordered.append(node)
+            queue.extend(sorted(children.get(id(node), []), key=lambda c: c.link_name))
+        return ordered
 
 
 # =============================================================================
@@ -344,7 +779,7 @@ class InertiaCalculator:
                     [xy, yy, yz],
                     [xz, yz, zz]]
 
-        inertia_link, com_link = self.to_link_frame(mass, com_world, i_origin, info.world_pose)
+        inertia_link, com_link = self.to_link_frame(mass, com_world, i_origin, info.link_pose)
         inertial = InertialInfo(mass=mass, com=com_link, inertia=inertia_link)
         inertial.warning = self.validate(inertia_link)
         if inertial.warning:
@@ -449,7 +884,8 @@ class MeshExporter:
         return ([mn.x * CM_TO_M, mn.y * CM_TO_M, mn.z * CM_TO_M],
                 [mx.x * CM_TO_M, mx.y * CM_TO_M, mx.z * CM_TO_M])
 
-    def export(self, info: ComponentInfo, mesh_dir: str) -> None:
+    def export(self, info: ComponentInfo, mesh_dir: str) -> str:
+        """Exports the STL; returns its file name."""
         file_name = f"{info.link_name}.stl"
         path = os.path.join(mesh_dir, file_name)
 
@@ -468,31 +904,82 @@ class MeshExporter:
 
         info.mesh_frame = frame
         info.mesh_scale = scale
-        # world: mesh points are in Fusion world -> bring them into the link frame
-        info.visual_pose = info.world_pose.inverse() if frame == "world" else Pose()
+        # Bring mesh points into the link frame
+        to_link = info.link_pose.inverse()
+        info.visual_pose = to_link if frame == "world" else to_link * info.component_pose
 
         if rel_err > self.settings.frame_check_tolerance:
             info.warnings.append(
                 f"Mesh frame check uncertain ({rel_err:.1%} bbox mismatch) - verify in RViz.")
+        return file_name
 
 
 # =============================================================================
-# URDF
+# xacro + joints.yaml
 # =============================================================================
-class UrdfBuilder:
+JOINT_MACRO = """<?xml version="1.0"?>
+<!-- Generated by fusion_ros_urdf_exporter. Overwritten on every export. -->
+<!-- One macro for every joint. Values come from config/joints.yaml and can be
+     changed per joint in config/joints_override.yaml.
+     Note: inside ${} use dict() instead of {} (xacro ends ${ at the first }). -->
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+  <xacro:macro name="fusion_joint" params="name parent child xyz rpy">
+    <xacro:property name="jd" value="${joints_cfg[name]}"/>
+    <xacro:property name="jo" value="${(joints_override or dict()).get(name) or dict()}"/>
+    <xacro:property name="jtype" value="${jo.get('type', jd['type'])}"/>
+    <xacro:property name="jaxis" value="${jo.get('axis', jd['axis'])}"/>
+    <xacro:property name="js" value="${-1 if jo.get('flip', jd['flip']) else 1}"/>
+    <xacro:property name="jlo" value="${float(jo.get('lower', jd['lower']))}"/>
+    <xacro:property name="jup" value="${float(jo.get('upper', jd['upper']))}"/>
+    <xacro:property name="jeffort" value="${jo.get('effort', jd['effort'])}"/>
+    <xacro:property name="jvel" value="${jo.get('velocity', jd['velocity'])}"/>
+    <joint name="${name}" type="${jtype}">
+      <parent link="${parent}"/>
+      <child link="${child}"/>
+      <origin xyz="${xyz}" rpy="${rpy}"/>
+      <xacro:unless value="${jtype == 'fixed'}">
+        <axis xyz="${'%g %g %g' % (js * jaxis[0] + 0.0, js * jaxis[1] + 0.0, js * jaxis[2] + 0.0)}"/>
+      </xacro:unless>
+      <xacro:if value="${jtype in ('revolute', 'prismatic')}">
+        <limit lower="${jlo if js > 0 else -jup}" upper="${jup if js > 0 else -jlo}"
+               effort="${jeffort}" velocity="${jvel}"/>
+      </xacro:if>
+      <xacro:if value="${jtype == 'continuous'}">
+        <limit effort="${jeffort}" velocity="${jvel}"/>
+      </xacro:if>
+    </joint>
+  </xacro:macro>
+</robot>
+"""
+
+
+class XacroBuilder:
     def __init__(self, package_name: str):
         self.package_name = package_name
+        ET.register_namespace("xacro", XACRO_NS)
 
-    def build(self, robot_name: str, components: List[ComponentInfo]) -> str:
-        robot = ET.Element("robot", name=robot_name)
-        robot.append(ET.Comment(" Generated by the Fusion 360 URDF exporter "))
+    @staticmethod
+    def _x(tag: str) -> str:
+        return f"{{{XACRO_NS}}}{tag}"
 
-        base = next(c for c in components if c.is_base)
+    def build(self, components: List[ComponentInfo]) -> str:
+        robot = ET.Element("robot", name=self.package_name)
+        robot.append(ET.Comment(" Generated by fusion_ros_urdf_exporter. Overwritten on every "
+                                "export. Change joints in config/joints_override.yaml. "))
+        ET.SubElement(robot, self._x("include"), filename="fusion_joint.xacro")
+        ET.SubElement(robot, self._x("property"), name="joints_cfg",
+                      value="${xacro.load_yaml('../config/joints.yaml')}")
+        ET.SubElement(robot, self._x("property"), name="joints_override",
+                      value="${xacro.load_yaml('../config/joints_override.yaml')}")
+
         for comp in components:
             self._add_link(robot, comp)
         for comp in components:
-            if not comp.is_base:
-                self._add_fixed_joint(robot, base, comp)
+            if comp.parent is not None:
+                p = comp.pose_in_parent
+                ET.SubElement(robot, self._x("fusion_joint"), name=comp.joint.name,
+                              parent=comp.parent.link_name, child=comp.link_name,
+                              xyz=p.xyz_str(), rpy=p.rpy_str())
 
         raw = ET.tostring(robot, encoding="unicode")
         return minidom.parseString(raw).toprettyxml(indent="  ")
@@ -520,13 +1007,38 @@ class UrdfBuilder:
                           ixx=fmt_num(i[0][0]), ixy=fmt_num(i[0][1]), ixz=fmt_num(i[0][2]),
                           iyy=fmt_num(i[1][1]), iyz=fmt_num(i[1][2]), izz=fmt_num(i[2][2]))
 
-    @staticmethod
-    def _add_fixed_joint(robot: ET.Element, base: ComponentInfo, comp: ComponentInfo) -> None:
-        joint = ET.SubElement(robot, "joint", name=f"{comp.link_name}_joint", type="fixed")
-        ET.SubElement(joint, "parent", link=base.link_name)
-        ET.SubElement(joint, "child", link=comp.link_name)
-        ET.SubElement(joint, "origin",
-                      xyz=comp.pose_in_base.xyz_str(), rpy=comp.pose_in_base.rpy_str())
+
+class JointsYamlWriter:
+    def __init__(self, settings: ExportSettings):
+        self.settings = settings
+
+    def build(self, components: List[ComponentInfo]) -> str:
+        f = fmt_yaml_float
+        lines = ["# Generated by fusion_ros_urdf_exporter. Overwritten on every export.",
+                 "# Do not edit: put your changes in joints_override.yaml.",
+                 "# Units: rad, m, N m or N, rad/s or m/s. axis is in the child link frame.",
+                 ""]
+        for comp in components:
+            if comp.parent is None:
+                continue
+            j = comp.joint
+            source = "no joint" if j.source == "none" else f"Fusion joint '{j.source}'"
+            lines += [
+                f"{j.name}:",
+                f"  # {comp.parent.link_name} -> {comp.link_name}, {source}, "
+                f"frame: {comp.frame_source}",
+                f"  type: {j.joint_type}",
+                f"  axis: [{', '.join(f(v) for v in j.axis)}]",
+                "  flip: false",
+                f"  lower: {f(j.lower)}",
+                f"  upper: {f(j.upper)}",
+                f"  effort: {f(self.settings.default_effort)}",
+                f"  velocity: {f(self.settings.default_velocity)}",
+                "",
+            ]
+        if len(lines) == 4:
+            lines.append("{}")      # no joints at all: still a valid (empty) mapping
+        return "\n".join(lines)
 
 
 # =============================================================================
@@ -545,7 +1057,9 @@ class RosPackageWriter:
   <exec_depend>ament_index_python</exec_depend>
   <exec_depend>launch</exec_depend>
   <exec_depend>launch_ros</exec_depend>
+  <exec_depend>xacro</exec_depend>
   <exec_depend>robot_state_publisher</exec_depend>
+  <exec_depend>joint_state_publisher_gui</exec_depend>
   <exec_depend>rviz2</exec_depend>
 
   <export>
@@ -568,7 +1082,8 @@ setup(
     data_files=[
         ('share/ament_index/resource_index/packages', ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
-        (os.path.join('share', package_name, 'urdf'), glob('urdf/*.urdf')),
+        (os.path.join('share', package_name, 'urdf'), glob('urdf/*.xacro')),
+        (os.path.join('share', package_name, 'config'), glob('config/*.yaml')),
         (os.path.join('share', package_name, 'meshes'), glob('meshes/*.stl')),
         (os.path.join('share', package_name, 'launch'), glob('launch/*.launch.py')),
         (os.path.join('share', package_name, 'rviz'), glob('rviz/*.rviz')),
@@ -590,6 +1105,7 @@ install_scripts=$base/lib/@PKG@
 
     LAUNCH = """import os
 
+import xacro
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch_ros.actions import Node
@@ -597,14 +1113,18 @@ from launch_ros.actions import Node
 
 def generate_launch_description():
     share = get_package_share_directory('@PKG@')
-    with open(os.path.join(share, 'urdf', '@PKG@.urdf'), 'r') as f:
-        robot_description = f.read()
+    robot_description = xacro.process_file(
+        os.path.join(share, 'urdf', '@PKG@.urdf.xacro')).toxml()
 
     return LaunchDescription([
         Node(
             package='robot_state_publisher',
             executable='robot_state_publisher',
             parameters=[{'robot_description': robot_description}],
+        ),
+        Node(
+            package='joint_state_publisher_gui',
+            executable='joint_state_publisher_gui',
         ),
         Node(
             package='rviz2',
@@ -642,12 +1162,12 @@ Visualization Manager:
   Name: root
 """
 
-    def __init__(self, package_dir: str, package_name: str, base_link: str,
-                 settings: ExportSettings):
-        self.dir = package_dir
-        self.pkg = package_name
+    def __init__(self, folder: PackageFolder, base_link: str, settings: ExportSettings):
+        self.folder = folder
+        self.pkg = folder.name
         self.base_link = base_link
         self.settings = settings
+        self.written: Set[str] = set()
 
     def _render(self, template: str) -> str:
         return (template
@@ -658,21 +1178,24 @@ Visualization Manager:
                 .replace("@EMAIL@", self.settings.maintainer_email)
                 .replace("@LICENSE@", self.settings.license))
 
-    def _write(self, rel_path: str, content: str) -> None:
-        path = os.path.join(self.dir, rel_path)
+    def write(self, rel_path: str, content: str) -> None:
+        path = self.folder.abs(rel_path)
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, "w", encoding="utf-8", newline="\n") as f:
             f.write(content)
+        self.written.add(rel_path)
 
-    def write(self, urdf_text: str) -> None:
-        self._write("package.xml", self._render(self.PACKAGE_XML))
-        self._write("setup.py", self._render(self.SETUP_PY))
-        self._write("setup.cfg", self._render(self.SETUP_CFG))
-        self._write(os.path.join("resource", self.pkg), "")
-        self._write(os.path.join(self.pkg, "__init__.py"), "")
-        self._write(os.path.join("launch", "display.launch.py"), self._render(self.LAUNCH))
-        self._write(os.path.join("rviz", "display.rviz"), self._render(self.RVIZ))
-        self._write(os.path.join("urdf", f"{self.pkg}.urdf"), urdf_text)
+    def write_package(self, robot_xacro: str, joints_yaml: str) -> None:
+        self.write("package.xml", self._render(self.PACKAGE_XML))
+        self.write("setup.py", self._render(self.SETUP_PY))
+        self.write("setup.cfg", self._render(self.SETUP_CFG))
+        self.write(f"resource/{self.pkg}", "")
+        self.write(f"{self.pkg}/__init__.py", "")
+        self.write("launch/display.launch.py", self._render(self.LAUNCH))
+        self.write("rviz/display.rviz", self._render(self.RVIZ))
+        self.write(f"urdf/{self.pkg}.urdf.xacro", robot_xacro)
+        self.write("urdf/fusion_joint.xacro", JOINT_MACRO)
+        self.write("config/joints.yaml", joints_yaml)
 
 
 # =============================================================================
@@ -688,23 +1211,21 @@ class RobotExporter:
         if not design:
             raise ExportError("Open a Fusion design first.")
 
-        target_dir = self.prompt.ask_directory()
-        default_name = NameSanitizer.sanitize(app.activeDocument.name)
-        robot_name = self.prompt.ask_robot_name(default_name)
+        folder = PackageFolder(self.prompt.ask_package_folder())
+        folder.check()
+        pkg = folder.name
+        overrides = OverrideFile(folder.abs(OVERRIDE_FILE))
 
-        package_dir = os.path.join(target_dir, robot_name)
-        if os.path.exists(package_dir):
-            if not self.prompt.confirm_overwrite(package_dir):
-                raise ExportCancelled()
-            shutil.rmtree(package_dir)
-
-        components = FusionModelReader(design, self.settings).read(robot_name)
-
-        mesh_dir = os.path.join(package_dir, "meshes")
-        os.makedirs(mesh_dir, exist_ok=True)
+        # Read and validate everything before writing anything
+        components = FusionModelReader(design, self.settings).read(pkg)
+        joints = JointReader(design).read()
+        components = KinematicTree(self.settings).build(components, joints, overrides.frames)
 
         inertia = InertiaCalculator(self.settings)
         meshes = MeshExporter(design, self.settings)
+        writer = RosPackageWriter(folder, components[0].link_name, self.settings)
+        mesh_dir = folder.abs("meshes")
+        os.makedirs(mesh_dir, exist_ok=True)
 
         progress = ui.createProgressDialog()
         progress.isCancelButtonShown = False
@@ -715,34 +1236,52 @@ class RobotExporter:
                 progress.progressValue = i
                 adsk.doEvents()
                 comp.inertial = inertia.compute(comp)
-                meshes.export(comp, mesh_dir)
+                writer.written.add("meshes/" + meshes.export(comp, mesh_dir))
             progress.progressValue = len(components)
         finally:
             progress.hide()
 
-        base_link = next(c.link_name for c in components if c.is_base)
-        urdf_text = UrdfBuilder(robot_name).build(robot_name, components)
-        RosPackageWriter(package_dir, robot_name, base_link, self.settings).write(urdf_text)
+        writer.write_package(XacroBuilder(pkg).build(components),
+                             JointsYamlWriter(self.settings).build(components))
+        created_override = overrides.create_if_missing()
+        removed = folder.remove_stale(writer.written)
+        folder.write_marker(writer.written)
 
-        summary = self._summary(package_dir, robot_name, components)
+        joint_names = {c.joint.name for c in components if c.joint}
+        orphans = [k for k in overrides.keys if k not in joint_names]
+        summary = self._summary(folder, components, removed, orphans, created_override)
         app.log(summary)
         self.prompt.show(summary)
 
     @staticmethod
-    def _summary(package_dir: str, robot_name: str, components: List[ComponentInfo]) -> str:
+    def _summary(folder: PackageFolder, components: List[ComponentInfo], removed: List[str],
+                 orphans: List[str], created_override: bool) -> str:
         unit = {0.001: "mm", 0.01: "cm", 1.0: "m"}
-        lines = [f"Exported robot '{robot_name}' to:", package_dir, ""]
+        action = "Updated" if folder.is_previous_export else "Exported"
+        lines = [f"{action} robot '{folder.name}' in:", folder.path, ""]
         for c in components:
             mass = f"{c.inertial.mass:.3f} kg" if c.inertial else "no inertia"
             lines.append(f"{c.link_name}  <-  {c.fusion_name}")
             lines.append(f"    mesh: {c.mesh_frame} frame, {unit.get(c.mesh_scale, c.mesh_scale)}, {mass}")
-            if not c.is_base:
-                lines.append(f"    xyz=\"{c.pose_in_base.xyz_str()}\" rpy=\"{c.pose_in_base.rpy_str()}\"")
+            if c.parent is not None:
+                j = c.joint
+                src = "no joint" if j.source == "none" else f"'{j.source}'"
+                lines.append(f"    {j.joint_type} to {c.parent.link_name} ({src}, "
+                             f"frame: {c.frame_source})")
+                p = c.pose_in_parent
+                lines.append(f"    xyz=\"{p.xyz_str()}\" rpy=\"{p.rpy_str()}\"")
             for w in c.warnings:
                 lines.append(f"    WARNING: {w}")
+        if orphans:
+            lines += ["", "joints_override.yaml entries without a matching joint: "
+                      + ", ".join(orphans)]
+        if removed:
+            lines += ["", "Removed files from the previous export: " + ", ".join(removed)]
+        if created_override:
+            lines += ["", f"Created {OVERRIDE_FILE} - edit it to change joints."]
         lines += ["", "Test in ROS 2:",
-                  f"  colcon build --packages-select {robot_name}",
-                  f"  ros2 launch {robot_name} display.launch.py"]
+                  f"  colcon build --packages-select {folder.name}",
+                  f"  ros2 launch {folder.name} display.launch.py"]
         return "\n".join(lines)
 
 

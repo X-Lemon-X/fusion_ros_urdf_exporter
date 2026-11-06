@@ -41,14 +41,34 @@ components fixed to `<pkg>_base_link`; one xacro macro; generated
   (manifest, `tests/`, README, `.gitignore`) applied with
   `git apply --exclude=fusion_ros_urdf_exporter.py`. All 9 tests pass.
 
+- Implemented [0004](proposals/0004-package-folder-and-reexport.md) and
+  [0003](proposals/0003-joints-from-fusion-xacro.md) in
+  `fusion_ros_urdf_exporter.py`; both `done`. New page
+  [joints.md](knowledge/joints.md); other knowledge pages updated.
+- Tests: 9 → 26, all pass; `test_real_xacro` runs the output through xacro
+  2.1.1 → [development-setup.md](knowledge/development-setup.md#tests).
+
+**Found** (implementation)
+- xacro ends `${` at the first `}`, so `{}` can't be used in expressions;
+  `dict()` works (answers Q19).
+- Fusion joints have `geometryOneTransform`/`geometryTwoTransform`: the full
+  joint frame as a matrix, simpler than `JointGeometry`. The coordinate
+  space is not documented (Q21).
+- PyYAML reads `1e-05` as a string, so `joints.yaml` floats are always
+  written with a `.`.
+
 **Next**
 - ~~Apply the patch (`git am`) and push.~~ Applied on `main` (see Found); not pushed.
 - Work continues directly on `main`.
 - Run in real Fusion on rft_robodog; answer Q1–Q5, Q7.
 - Measure the wheel radius (Q8).
-- Check the Fusion joint API names (Q21) and the xacro YAML lookup (Q19)
-  before coding 0003.
-- Implement 0004, then 0003, with offline tests (fake joints in `fake_adsk`).
+- ~~Check the Fusion joint API names (Q21) and the xacro YAML lookup (Q19)
+  before coding 0003.~~ Done: names checked, Q19 answered; Q21 frame space
+  still open.
+- ~~Implement 0004, then 0003, with offline tests (fake joints in `fake_adsk`).~~
+  Done, see Done above.
+- Run in real Fusion on a model with joints; check Q21 and the summary
+  warnings; `colcon build` + `ros2 launch` in a real ROS 2 workspace (Q9).
 
 ## 2026-10-27 — v0.1 exporter written
 

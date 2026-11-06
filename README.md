@@ -1,7 +1,11 @@
 # fusion_ros_urdf_exporter
 
-Fusion 360 script that exports a robot to a **URDF** inside a ready-to-build
-**ROS 2 description package** (ament_python), with STL meshes and inertia.
+Fusion 360 script that exports the open design to a ready-to-build
+**ROS 2 description package** (ament_python): xacro with real joints, STL
+meshes, inertia, a joint config you can edit, a launch file and an RViz
+config. It works for any robot model.
+
+Full documentation: [docs/](docs/README.md).
 
 ## Install
 
@@ -23,90 +27,93 @@ point it to the cloned folder. Then select the script and press **Run**.
 ## Preparing the model
 
 * The design must contain a **visible top-level component named `base_link`**.
-  It becomes the root link `<robot_name>_base_link`.
-* Every other **visible top-level component** becomes one link. Hide (lightbulb
-  off) whatever should not be exported.
-* Subcomponents are not separate links; they are part of their top-level
-  parent's mesh and inertia.
-* Each link frame is the **origin of its component**. Put component origins
-  where the joint frames should be (e.g. wheel origin in the wheel centre).
+  It becomes the root link `<package>_base_link`.
+* Every other **visible top-level component** becomes one link. Hide (light
+  bulb off) whatever should not be exported. Subcomponents are part of their
+  top-level parent's mesh and inertia.
+* **Joints** between top-level components define the tree. In each joint,
+  **component 1 is the child** (the part mounted onto component 2).
+  Rigid → `fixed`, revolute → `revolute` (with limits) or `continuous`,
+  slider → `prismatic`. Other joint types are exported as `fixed`.
+* A component **without a joint** is attached to the base link with a fixed
+  joint. Good for sensors from vendors: drop them into the model and they
+  appear in the right place in TF. Put their component origin where the
+  frame should be.
 * Assign **materials** to all bodies – masses and inertia come from Fusion's
   physical properties.
 
 ## Running
 
-1. Choose the target directory.
-2. Enter the robot name. It is sanitized to `lowercase_with_underscores` and used
-   for the folder, the ROS package and the base link name.
-3. If `<dir>/<robot_name>` already exists you can delete it and export again,
-   or stop.
+Choose or create a folder in the dialog. **The folder name is the package
+name** and must be a valid ROS package name (`my_robot`, not `My-Robot`).
+
+| Folder | What happens |
+|---|---|
+| empty | the package is exported |
+| a previous export of this script | it is regenerated; your `config/joints_override.yaml` and any files you added are kept |
+| anything else | the script refuses and writes nothing |
+
+The summary dialog (also in **Text Commands**) lists every link with its
+joint, pose, mass and warnings.
 
 ## Output
 
 ```
-<robot_name>/
+<package>/
   package.xml, setup.py, setup.cfg
-  resource/<robot_name>
-  <robot_name>/__init__.py
-  urdf/<robot_name>.urdf
+  resource/<package>
+  <package>/__init__.py
+  urdf/<package>.urdf.xacro      links + joints (regenerated)
+  urdf/fusion_joint.xacro        the joint macro
+  config/joints.yaml             joint settings from Fusion (regenerated)
+  config/joints_override.yaml    YOUR changes (never overwritten)
   meshes/*.stl
   launch/display.launch.py
   rviz/display.rviz
+  .fusion_urdf_export            list of generated files
 ```
 
-* Link names: component names, lowercase, `:` and other symbols → `_`
-  (`wheel_left_front:1` → `wheel_left_front_1`); duplicates get `_2`, `_3`…
-* Joints: `fixed`, parent `<robot_name>_base_link`, origin = component pose
-  relative to `base_link`. Axes are kept exactly as in Fusion.
-* Meshes: binary STL, medium refinement, referenced as
-  `package://<robot_name>/meshes/<link>.stl`. After export the script reads each
-  STL's bounding box to detect whether Fusion wrote it in world or local
-  coordinates and in mm / cm / m, and sets the visual origin and scale to match.
-* Inertial: mass, centre of mass and inertia tensor about the centre of mass,
-  in link axes.
-* No collision geometry yet.
+## Changing joints without touching Fusion
 
-The summary dialog (also in **Text Commands**) lists every link with its pose,
-mass and warnings (zero mass, invalid inertia, uncertain mesh frame).
+Edit `config/joints_override.yaml`. Any key wins over `config/joints.yaml`:
+
+```yaml
+wheel_left_front_1_joint:
+  type: continuous      # fixed | revolute | continuous | prismatic
+  flip: true            # reverse the axis (and the limits)
+  axis: [0.0, 0.0, 1.0] # in the child link frame
+  lower: -1.0
+  upper: 1.0
+  effort: 10.0
+  velocity: 1.0
+  frame: origin         # joint | origin – applied on the next export
+```
+
+`frame: origin` uses the component origin as the link frame instead of the
+Fusion joint frame. Use it when a joint in Fusion is badly placed.
 
 ## Viewing in ROS 2
 
 ```bash
-cp -r <robot_name> ~/ros2_ws/src/
-cd ~/ros2_ws && colcon build --packages-select <robot_name>
+cp -r <package> ~/ros2_ws/src/
+cd ~/ros2_ws && colcon build --packages-select <package>
 source install/setup.bash
-ros2 launch <robot_name> display.launch.py
+ros2 launch <package> display.launch.py
 ```
 
-## Code layout
-
-Everything is in `fusion_ros_urdf_exporter.py`, split into classes:
-
-| Class | Responsibility |
-|---|---|
-| `ExportSettings` | All options (refinement, visibility filter, package metadata) |
-| `Pose` | Rigid transforms, inverse, composition, URDF rpy |
-| `NameSanitizer`, `UniqueNamer` | ROS-safe, unique link names |
-| `UserPrompt` | Folder / name / overwrite dialogs |
-| `FusionModelReader` | Finds `base_link`, collects components and their poses |
-| `InertiaCalculator` | Fusion physical properties → URDF `<inertial>` |
-| `StlReader`, `MeshFrameDetector`, `MeshExporter` | STL export and frame/unit detection |
-| `UrdfBuilder` | URDF XML |
-| `RosPackageWriter` | ROS 2 package files |
-| `RobotExporter` | Orchestrates the export |
+The launch file starts `robot_state_publisher`, `joint_state_publisher_gui`
+(to move the joints) and RViz.
 
 ## Tests
 
-The tests run outside Fusion with a fake `adsk` module and a simulated design
-(box-shaped parts with known geometry and inertia):
+The tests run outside Fusion with a fake `adsk` module and simulated designs:
 
 ```bash
 python -m unittest discover -s tests -v
 ```
 
-They check that every mesh vertex lands in the right place, that centre of mass
-and inertia are exact for world/local mesh frames in mm/cm/m, and cover naming,
-the overwrite prompt and the generated package files.
+With `pip install xacro` one more test runs the generated package through
+real xacro.
 
 ## License
 

@@ -24,6 +24,30 @@ conditions they were seen under.
   coordinates. The mesh frame detection relies on this, see
   [mesh-export.md](mesh-export.md#frame-and-unit-detection).
 
+## Joints
+
+Checked against the Autodesk API reference on 2026-11-06 (see
+[sources.md](../sources.md)); not yet run in real Fusion.
+
+- `Joint`: `occurrenceOne`, `occurrenceTwo`, `jointMotion`, `isSuppressed`,
+  `name`, `geometryOneTransform`, `geometryTwoTransform` (joint geometry
+  frame as `Matrix3D`, available even when the `JointGeometry` is not),
+  `geometryOrOriginOne/Two`, `isFlipped`, `offset`, `angle`.
+- `AsBuiltJoint`: `occurrenceOne/Two`, `jointMotion`, `isSuppressed`,
+  `transform` (one frame). `geometry` is null for rigid as-built joints.
+- `JointTypes`: Rigid 0, Revolute 1, Slider 2, Cylindrical 3, PinSlot 4,
+  Planar 5, Ball 6. `jointMotion` is null for inferred joints.
+- `RevoluteJointMotion`: `rotationAxis` (X/Y/Z/Custom), `rotationAxisVector`,
+  `rotationValue` (rad), `rotationLimits`.
+- `SliderJointMotion`: `slideDirection`, `slideDirectionVector`,
+  `slideValue` (cm), `slideLimits`.
+- `JointLimits`: `isMinimumValueEnabled`, `minimumValue`,
+  `isMaximumValueEnabled`, `maximumValue`, in cm or rad.
+- `JointGeometry`: `origin`, `primaryAxisVector` (Z), `secondaryAxisVector`
+  (X), `thirdAxisVector` (Y).
+- **Not documented:** the coordinate space of the axis vectors and the
+  transforms. The exporter assumes world (root) coordinates (Q21).
+
 ## STEP imports
 
 After a STEP import, component origins often all sit at the world origin
@@ -43,7 +67,7 @@ no meaning. Move the origins (or add joint origins) before exporting.
 
 ## Not verified yet (as of 2026-11-06)
 
-- `ui.createFolderDialog`, `ui.inputBox` (returns `(value, cancelled)`) and
-  the Yes/No `ui.messageBox` behave as the code assumes. Only the fake
-  `adsk` has been used so far (Q1).
+- `ui.createFolderDialog` behaves as the code assumes, and lets the user
+  create a new folder (Q1, Q20). Only the fake `adsk` has been used so far.
+- The coordinate space of joint vectors and transforms (Q21).
 - The sign of the off-diagonal terms from `getXYZMomentsOfInertia` (Q3).

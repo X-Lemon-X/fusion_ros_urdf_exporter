@@ -9,7 +9,7 @@ Fusion writes the STL in. It measures that after the export.
 - `design.exportManager.createSTLExportOptions(occurrence, path)`, binary,
   refinement from `ExportSettings.mesh_refinement` (default medium).
 - File: `meshes/<link_name>.stl`. URDF reference:
-  `package://<robot_name>/meshes/<link_name>.stl`.
+  `package://<pkg>/meshes/<link_name>.stl`.
 - If `execute()` returns false or the file is missing → `ExportError`.
 
 ## Frame and unit detection
@@ -26,8 +26,9 @@ Fusion writes the STL in. It measures that after the export.
    the largest edge of the reference box. The smallest relative error wins.
 4. Result:
    - mesh `scale` = the chosen unit factor (e.g. `0.001 0.001 0.001` for mm)
-   - world frame → visual origin = `inv(T_component_world)`
-   - local frame → visual origin = identity
+   - world frame → visual origin = `inv(T_link_world)`
+   - local frame → visual origin = `inv(T_link_world) · T_component_world`
+     (identity when the link frame is the component origin)
 5. If the best relative error is above `frame_check_tolerance` (0.05), the
    link gets the warning "Mesh frame check uncertain (x% bbox mismatch) –
    verify in RViz."

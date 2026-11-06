@@ -2,6 +2,21 @@
 
 Newest first. One entry per decision: what, why, and where it is described.
 
+## 2026-11-06 — Implementation choices for 0003 / 0004
+
+- **Link frame from the child-side joint geometry (`geometryOneTransform`).**
+  Why: it moves with the child, so it is a valid link frame at the export
+  pose. Earlier text said parent side; both coincide for a solved joint.
+  → [joints.md](knowledge/joints.md#link-frame)
+- **Defaults of Q13–Q18 implemented as written** (prismatic without limits →
+  0/0 + warning, effort 10 / velocity 1, root component = base, flip a joint
+  with base as component one, first non-rigid of duplicate joints, refuse an
+  invalid folder name). Why: they let work continue; they stay open
+  questions until a real model shows otherwise.
+- **No confirmation dialog before regenerating a previous export.** Why: the
+  decided rule is "previous export → regenerate"; user files and the
+  override file are never touched, so there is little to lose.
+
 ## 2026-11-06 — Joints, xacro output and package folder
 
 - **The tool is generic, for every robot model.** rft_robodog is only the

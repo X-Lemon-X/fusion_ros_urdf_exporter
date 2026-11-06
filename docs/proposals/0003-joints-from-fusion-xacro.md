@@ -1,6 +1,6 @@
 # 0003 Joints from Fusion, xacro macro and YAML joint config
 
-Status: accepted · Date: 2026-11-06
+Status: done · Date: 2026-11-06
 
 Supersedes [0002](0002-real-joints.md). The tool is generic: nothing in it
 may depend on one robot. rft_robodog is only the first test model.
@@ -125,6 +125,23 @@ field it uses the value from `joints_override.yaml` if present, else from
   `xacro <pkg>.urdf.xacro > <pkg>.urdf` gives one when needed.
 
 Package folder, name and re-export rules: [0004](0004-package-folder-and-reexport.md).
+
+## Implementation notes (2026-11-06)
+
+Implemented as described; facts are in [joints.md](../knowledge/joints.md).
+Deviations and details settled while coding:
+- The link frame is the joint geometry on the **child** side
+  (`geometryOneTransform`), not the parent side. It moves with the child, so
+  it is a valid link frame at the current pose; when the joint is solved
+  both sides coincide anyway. Flipped joints use side two.
+- Fusion API names checked against the reference. The joint frame comes from
+  `geometryOneTransform`/`geometryTwoTransform` (as-built: `transform`), not
+  from `JointGeometry`.
+- The axis-line warning only runs when the link frame is the component
+  origin; with the joint frame the axis passes through the link origin.
+- The macro file is `urdf/fusion_joint.xacro`, macro `fusion_joint`.
+  In xacro expressions `dict()` is used instead of `{}` (Q19).
+- Joints from the Q13–Q18 defaults are implemented as written there.
 
 ## Alternatives
 

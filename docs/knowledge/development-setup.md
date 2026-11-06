@@ -38,20 +38,29 @@ python -m unittest discover -s tests -v
 
 VS Code Testing panel: unittest, start dir `tests`, pattern `test_*.py`.
 
-Measured 2026-11-06: all 9 tests pass in 0.5 s on Python 3.12.10, Windows 11.
+`test_real_xacro` runs the generated package through real xacro. It is
+skipped unless the `xacro` package is importable:
+
+```bash
+python -m venv .venv && .venv/Scripts/pip install xacro    # Windows
+.venv/Scripts/python -m unittest discover -s tests -v
+```
+
+Measured 2026-11-06 on Windows 11: 26 tests pass in about 1 s, on Python
+3.12.10 (1 skipped) and in a venv with xacro 2.1.1 (none skipped).
 
 | File | Content |
 |---|---|
-| `tests/fake_adsk/adsk/{__init__,core,fusion}.py` | Fake Fusion API: dialogs, enums |
-| `tests/fake_design.py` | Box-shaped parts with known geometry and inertia, the robodog poses, a fake STL export manager |
-| `tests/test_exporter.py` | 9 tests |
+| `tests/fake_adsk/adsk/{__init__,core,fusion}.py` | Fake Fusion API: dialogs, enums incl. `JointTypes` |
+| `tests/fake_design.py` | Box-shaped parts with known geometry and inertia, fake joints and as-built joints, the robodog poses and joints, a fake STL export manager |
+| `tests/test_exporter.py` | 26 tests |
 
-The 9 tests: `test_sanitize`, `test_unique_names`, `test_pose_roundtrip`,
-`test_frame_detector` (unit tests); `test_scenarios` (every mesh vertex
-lands in the right place, COM and inertia exact for world/local frames in
-mm/cm/m), `test_package_files`, `test_overwrite_yes_deletes_old_folder`,
-`test_overwrite_no_leaves_folder_untouched`, `test_missing_base_link`
-(end-to-end).
+| Test class | Covers |
+|---|---|
+| `UnitTests` | names, `Pose`, frame detector, `fmt_yaml_float`, override parser |
+| `RobodogTests` | every mesh vertex, COM and inertia exact for world/local × mm/cm/m × moved base, with and without joints; wheel axis and joint frame; package files; real xacro with `flip` and `type` overrides |
+| `JointTreeTests` | arm chain (revolute limits shifted by the current value, prismatic in m, cylindrical → fixed), as-built joint, island, flipped base, joint to root, hidden parent, suppressed joint, two parents and loop errors, missing joint geometry |
+| `FolderTests` | missing `base_link`, invalid folder name, foreign folder, cancel, re-export (override and user files kept, stale mesh removed, orphan override reported), `frame: origin`, axis-line warning |
 
 ## Day-to-day loop
 

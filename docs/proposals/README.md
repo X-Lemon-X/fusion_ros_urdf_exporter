@@ -10,8 +10,8 @@ Status values: `draft` (being discussed) · `accepted` (we will do it) ·
 |---|---|---|
 | [0001](0001-ros-axis-convention.md) | ROS axis convention option (REP-103) | draft |
 | [0002](0002-real-joints.md) | Real joints (continuous, revolute, prismatic) | superseded by 0003 |
-| [0003](0003-joints-from-fusion-xacro.md) | Joints from Fusion, xacro macro and YAML joint config | accepted |
-| [0004](0004-package-folder-and-reexport.md) | Package folder, name and re-export | accepted |
+| [0003](0003-joints-from-fusion-xacro.md) | Joints from Fusion, xacro macro and YAML joint config | done |
+| [0004](0004-package-folder-and-reexport.md) | Package folder, name and re-export | done |
 
 ## Planned, no proposal yet
 

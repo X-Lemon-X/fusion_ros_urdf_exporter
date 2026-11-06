@@ -15,3 +15,13 @@ class Design:
     @staticmethod
     def cast(obj):
         return obj
+
+
+class JointTypes:
+    RigidJointType = 0
+    RevoluteJointType = 1
+    SliderJointType = 2
+    CylindricalJointType = 3
+    PinSlotJointType = 4
+    PlanarJointType = 5
+    BallJointType = 6

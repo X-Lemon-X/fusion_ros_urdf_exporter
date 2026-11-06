@@ -1,6 +1,6 @@
 # 0004 Package folder, name and re-export
 
-Status: accepted · Date: 2026-11-06
+Status: done · Date: 2026-11-06
 
 ## Problem
 
@@ -32,6 +32,14 @@ name separately from the folder is also one step too many.
   On re-export the tool deletes the listed files that it does not write
   again (e.g. the mesh of a removed link). Files the user added to the
   package are not touched.
+
+## Implementation notes (2026-11-06)
+
+Implemented as described in `PackageFolder`; facts in
+[exporter-pipeline.md](../knowledge/exporter-pipeline.md#package-folder).
+Details: no confirmation dialog before regenerating; an invalid name is
+refused with the sanitized name as a hint (Q18 default); a folder emptied by
+stale-file removal is deleted; exports from v0.1 (no marker) are foreign.
 
 ## Alternatives
 

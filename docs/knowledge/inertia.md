@@ -19,8 +19,9 @@ top-level occurrence, subcomponents included. Units as in
    [open-questions.md](../open-questions.md).
 5. Parallel-axis theorem to the COM: `I_com = I_origin − m·D(com)`, still in
    world axes.
-6. Rotate into link axes: `I_link = Rᵀ · I_com · R`, with `R` the link's
-   world rotation. COM in the link frame: `inv(T_link_world) · com_world`.
+6. Rotate into link axes: `I_link = Rᵀ · I_com · R`, with `R` the rotation
+   of the link frame (joint frame or component origin, see
+   [joints.md](joints.md#link-frame)). COM in the link frame: `inv(T_link_world) · com_world`.
 7. URDF: `<origin xyz="COM" rpy="0 0 0">`, `<mass>`, `<inertia ixx … izz>`.
 
 ## Checks

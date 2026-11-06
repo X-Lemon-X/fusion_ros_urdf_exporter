@@ -143,13 +143,73 @@ class FakeExportManager:
         return True
 
 
+class _Vector:
+    def __init__(self, v):
+        self.x, self.y, self.z = v
+
+
+class _Limits:
+    def __init__(self, lo, hi):
+        self.isMinimumValueEnabled = lo is not None
+        self.isMaximumValueEnabled = hi is not None
+        self.minimumValue = lo if lo is not None else 0.0
+        self.maximumValue = hi if hi is not None else 0.0
+
+
+class _Motion:
+    def __init__(self, jtype, axis_world, value, limits):
+        self.jointType = jtype
+        vec = _Vector(axis_world) if axis_world is not None else None
+        lim = _Limits(*limits)
+        if jtype == 1:      # revolute: rad
+            self.rotationAxisVector, self.rotationValue, self.rotationLimits = vec, value, lim
+        elif jtype == 2:    # slider: cm
+            self.slideDirectionVector, self.slideValue, self.slideLimits = vec, value, lim
+
+
+class FakeJoint:
+    """Fusion joint. `frame` = joint frame in world (both sides coincide).
+
+    value and limits are in Fusion units: rad for revolute, cm for slider.
+    """
+
+    def __init__(self, name, one, two, jtype, frame=None, axis_world=None, value=0.0,
+                 limits=(None, None), suppressed=False):
+        self.name = name
+        self.occurrenceOne, self.occurrenceTwo = one, two
+        self.jointMotion = _Motion(jtype, axis_world, value, limits)
+        self.isSuppressed = suppressed
+        self._frame = frame
+
+    def _m(self):
+        if self._frame is None:
+            raise RuntimeError("no geometry")
+        return _Matrix3D(self._frame)
+
+    @property
+    def geometryOneTransform(self):
+        return self._m()
+
+    @property
+    def geometryTwoTransform(self):
+        return self._m()
+
+
+class FakeAsBuiltJoint(FakeJoint):
+    @property
+    def transform(self):
+        return self._m()
+
+
 class FakeDesign:
-    def __init__(self, occurrences, export_manager):
+    def __init__(self, occurrences, export_manager, joints=(), as_built=()):
         class _Root:
             pass
 
         self.rootComponent = _Root()
         self.rootComponent.occurrences = occurrences
+        self.rootComponent.joints = list(joints)
+        self.rootComponent.asBuiltJoints = list(as_built)
         self.exportManager = export_manager
 
 
@@ -173,3 +233,20 @@ def robodog_occurrences(base_world):
         # Sanitizes to the same name as wheel_left_back:1 -> gets suffix wheel_left_back_1_2
         FakeOccurrence("Wheel Left Back:1",at((0, 0, 0), [0, 0, 0.3]), [0, 0, 0], [0.05, 0.05, 0.05], 0.1),
     ]
+
+
+def robodog_joints(occs):
+    """Wheels: revolute without limits (-> continuous), joint frame rotated
+    about the wheel axis so the link frame differs from the component origin.
+    Lidar: rigid joint with a frame offset from its origin. Camera: no joint."""
+    by = {o.name: o for o in occs}
+    base = by["base_link:1"]
+    joints = []
+    for name in ("wheel_left_back:1", "wheel_right_back:1", "wheel_left_front:1", "wheel_right_front:1"):
+        w = by[name]
+        frame = w.world * Pose(rot_rpy(0, 0, 0.4), [0, 0, 0])
+        axis = [w.world.R[k][2] for k in range(3)]
+        joints.append(FakeJoint(f"Rev {name}", w, base, 1, frame, axis))
+    lidar = by["STL_19P_3D:1"]
+    joints.append(FakeJoint("Rigid lidar", lidar, base, 0, lidar.world * Pose(translation=[0, 0, 0.02])))
+    return joints

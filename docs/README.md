@@ -20,9 +20,10 @@ Code lives in the repo root; this folder holds explanations, plans and decisions
 ## Pages
 
 Knowledge
-- [Exporter pipeline](knowledge/exporter-pipeline.md): overview, steps, naming, settings, classes
+- [Exporter pipeline](knowledge/exporter-pipeline.md): overview, steps, package folder, naming, settings, classes
 - [Frames and units](knowledge/frames-and-units.md): the unit and frame reference
 - [Mesh export](knowledge/mesh-export.md): STL export and world/local + unit detection
+- [Joints and kinematic tree](knowledge/joints.md): Fusion joints → URDF, xacro macro, YAML config
 - [Inertia](knowledge/inertia.md): mass, COM, tensor
 - [Generated ROS 2 package](knowledge/ros2-package.md)
 - [Fusion 360 API facts](knowledge/fusion-api.md)

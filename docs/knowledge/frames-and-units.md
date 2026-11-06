@@ -19,9 +19,10 @@ The one reference for units and coordinate frames. Other pages link here.
 | Frame | Definition |
 |---|---|
 | Fusion world | Root component frame of the design |
-| Link frame | Origin and axes of the Fusion component (`occurrence.transform2`) |
-| Base link | Link frame of the top-level component `base_link`, named `<robot_name>_base_link` in URDF |
-| Joint origin | Pose of the child link frame in the base link frame: `pose_in_base = inv(T_base_world) * T_component_world` |
+| Component frame | Origin and axes of the Fusion component (`occurrence.transform2`) |
+| Link frame | The Fusion joint frame when the component has a joint, else the component frame. Rules in [joints.md](joints.md#link-frame) |
+| Base link | Component frame of the top-level component `base_link`, named `<pkg>_base_link` |
+| Joint origin | Child link frame in the parent link frame: `inv(T_parent_link) * T_link` |
 
 - Axes are kept **1:1 with Fusion**. The output is not rotated to the ROS
   convention (REP-103: X forward, Y left, Z up). If the model's forward
