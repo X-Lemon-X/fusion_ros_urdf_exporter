@@ -256,29 +256,29 @@ In ROS one joint connects the two.
 
 1. **Export the module on its own.** Open the arm design (it has its own
    `base_link` and joints) and export it, for example into a folder
-   `sdrac1`. You get the package `sdrac1` with the root link
-   `sdrac1_base_link`.
+   `arm`. You get the package `arm` with the root link
+   `arm_base_link`.
 2. **Insert the module into the robot design** where it is mounted, as one
-   top-level component (for example `sdrac1:1`). Attach it with a rigid
+   top-level component (for example `arm:1`). Attach it with a rigid
    joint, or leave it without a joint.
 3. **Export the robot.** In the robot package, open
    `config/joints_override.yaml` and mark the module as a mount:
    ```yaml
-   sdrac1_1_joint:
+   arm_1_joint:
      mount: true
    ```
-4. **Export the robot again.** The link `sdrac1_1` is now empty: no mesh
+4. **Export the robot again.** The link `arm_1` is now empty: no mesh
    and no mass, only its position. Its frame is the module's `base_link`,
-   which is the same frame as `sdrac1_base_link` in the module's package.
+   which is the same frame as `arm_base_link` in the module's package.
    The summary shows the joint to add.
 5. **Join the packages** in your own xacro, with one joint and no origin:
    ```xml
    <robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="spoon_bot_with_arm">
      <xacro:include filename="$(find spoon_bot)/urdf/spoon_bot.urdf.xacro"/>
-     <xacro:include filename="$(find sdrac1)/urdf/sdrac1.urdf.xacro"/>
-     <joint name="sdrac1_1_mount" type="fixed">
-       <parent link="sdrac1_1"/>
-       <child link="sdrac1_base_link"/>
+     <xacro:include filename="$(find arm)/urdf/arm.urdf.xacro"/>
+     <joint name="arm_1_mount" type="fixed">
+       <parent link="arm_1"/>
+       <child link="arm_base_link"/>
      </joint>
    </robot>
    ```
