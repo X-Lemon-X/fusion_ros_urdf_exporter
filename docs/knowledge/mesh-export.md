@@ -39,6 +39,11 @@ Fusion writes the STL in. It measures that after the export.
   meshes were detected as local / mm; visual origins are identity.
 - Medium refinement gives large files: `ttt1_base_link.stl` 81 MB, the
   OAK-D Lite 8.4 MB, each wheel 5.3 MB; 109 MB in total.
+- Same on sdrac1 (export `sdrac1`, 2026-11-06): the 6 moving links local /
+  mm. `base_link` sits at the world origin, so world and local are the same
+  and it was reported as "world frame"
+  ([robot-sdrac1.md](robot-sdrac1.md#export-sdrac1-2026-11-06)). Meshes
+  105 MB.
 
 ## Known limitations (as of 2026-11-06)
 
@@ -47,6 +52,6 @@ Fusion writes the STL in. It measures that after the export.
   are nearly the same (e.g. a symmetric part rotated about its centre),
   both frames score alike and the choice can be wrong. Not seen yet; not
   tested.
-- Checked on one real export only ([above](#measured-in-real-fusion-2026-11-06-rft_robodog-export-ttt1)).
+- Checked on two real exports only ([above](#measured-in-real-fusion-2026-11-06-rft_robodog-export-ttt1)).
   Whether the summary showed "uncertain" warnings is not confirmed (Q2 in
   [open-questions.md](../open-questions.md)).

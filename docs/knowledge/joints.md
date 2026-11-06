@@ -112,8 +112,10 @@ by xacro at launch time, so they need no re-export.
 
 ## Known limitations (as of 2026-11-06)
 
-- Not run in real Fusion on a model with joints yet: the first real export
-  (`ttt1`, 2026-11-06) read none (Q22). The frame space of the joint vectors
-  and matrices is assumed to be world (Q21).
+- Run in real Fusion on one model with joints: sdrac1, 6 revolute joints,
+  all read, tree and axes plausible
+  ([robot-sdrac1.md](robot-sdrac1.md#forward-kinematics-at-zero-computed-from-the-xacro-2026-11-06)).
+  Whether the parts turn about the right lines in RViz is not checked yet
+  (Q21). Joint limits and slider joints not tried in real Fusion.
 - No `mimic`, no closed loops, no joint types beyond the table above.
 - `parent`, `child`, `xyz`, `rpy` can't be overridden; change them in Fusion.

@@ -29,6 +29,7 @@ Knowledge
 - [Fusion 360 API facts](knowledge/fusion-api.md)
 - [Development setup](knowledge/development-setup.md): install, VS Code, tests
 - [Target robot: rft_robodog](knowledge/robot-rft-robodog.md)
+- [Test robot: sdrac1 (6-axis arm)](knowledge/robot-sdrac1.md)
 
 Proposals
 - [0001 ROS axis convention option (REP-103)](proposals/0001-ros-axis-convention.md)

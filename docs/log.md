@@ -6,6 +6,22 @@ linked pages; this file is the short version.
 
 ---
 
+## 2026-11-06 — First export with joints (6-axis arm `sdrac1`)
+
+**Done**
+- The project owner exported the arm sdrac1 from real Fusion into
+  `C:/Users/patdu/Desktop/fftest/sdrac1`. No warnings. All 6 revolute
+  joints read, chained `base → axis1 → … → axis6`, all `continuous` (no
+  limits in Fusion) → [robot-sdrac1.md](knowledge/robot-sdrac1.md).
+- Forward kinematics at zero computed from the xacro: joint origins and
+  axes fit a 6R arm; J1 axis points down (flipped Fusion frame).
+
+**Next**
+- `ros2 launch sdrac1 display.launch.py`: move each joint with
+  `joint_state_publisher_gui` and check that each part turns about its real
+  axis (Q21).
+- Set joint limits (in Fusion or `joints_override.yaml`, `type: revolute`).
+
 ## 2026-11-06 — `ttt1` built on ROS 2 Jazzy; docs check
 
 **Done**
