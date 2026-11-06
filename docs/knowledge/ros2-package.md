@@ -60,6 +60,14 @@ rebuild (`colcon build`), not a new export from Fusion.
 
 ## Known limitations (as of 2026-11-06)
 
-- Not built in a real ROS 2 workspace yet. The offline tests check the file
-  contents and run the xacro files through xacro 2.1.1 from PyPI.
-- No ROS 2 distribution is pinned or tested (Q9).
+- Built once in a real workspace (below). `ros2 launch` and the RViz view
+  are not checked yet (Q5).
+- Only ROS 2 Jazzy has been tried; no distribution is pinned (Q9).
+
+## Measured on ROS 2 Jazzy (2026-11-06, export `ttt1`, Linux)
+
+- `colcon build --symlink-install` in `~/it/fftest` (package `ttt1` copied
+  from the Windows export): return code 0 in about 1.2 s.
+- `xacro install/ttt1/share/ttt1/urdf/ttt1.urdf.xacro` with Jazzy's xacro
+  works; `check_urdf` parses the result: root `ttt1_base_link`, 6 children
+  (all `fixed`, because the model had no joints, Q22).

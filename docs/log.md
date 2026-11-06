@@ -6,6 +6,20 @@ linked pages; this file is the short version.
 
 ---
 
+## 2026-11-06 — `ttt1` built on ROS 2 Jazzy; docs check
+
+**Done**
+- `colcon build --symlink-install` of `ttt1` on Jazzy (Linux) passes;
+  Jazzy's `xacro` + `check_urdf` accept the output (7 links, 6 fixed
+  joints) → [ros2-package.md](knowledge/ros2-package.md#measured-on-ros-2-jazzy-2026-11-06-export-ttt1-linux).
+- Offline tests on Linux, Python 3.12: 26 pass, 1 skipped (no PyPI xacro).
+- Docs check: 0 link/index/status problems. Removed stale "not run / not
+  built yet" lines; struck through the superseded v0.1 link frame decision.
+
+**Next**
+- `ros2 launch ttt1 display.launch.py`; check meshes in RViz (Q5) and the
+  lidar scan direction (Q7).
+
 ## 2026-11-06 — First run in real Fusion (rft_robodog → `ttt1`)
 
 **Done**
@@ -23,7 +37,8 @@ linked pages; this file is the short version.
 **Next**
 - Answer Q22 (where are the joints?) and re-export.
 - Check the summary in Text Commands for warnings (Q2).
-- `colcon build` + `ros2 launch` in a ROS 2 workspace (Q5, Q9).
+- ~~`colcon build`~~ Done on Jazzy, see the entry above. `ros2 launch` in
+  a ROS 2 workspace still to do (Q5, Q9).
 
 
 ## 2026-11-06 — Knowledge base set up

@@ -47,5 +47,6 @@ Fusion writes the STL in. It measures that after the export.
   are nearly the same (e.g. a symmetric part rotated about its centre),
   both frames score alike and the choice can be wrong. Not seen yet; not
   tested.
-- Not checked against real Fusion STLs yet (Q2 in
+- Checked on one real export only ([above](#measured-in-real-fusion-2026-11-06-rft_robodog-export-ttt1)).
+  Whether the summary showed "uncertain" warnings is not confirmed (Q2 in
   [open-questions.md](../open-questions.md)).

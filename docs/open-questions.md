@@ -12,7 +12,7 @@ When a question is answered, write the answer next to it (or move it to
 | Q3 | What is the sign convention of the off-diagonal terms from `getXYZMomentsOfInertia`? | As in fusion2urdf: used as returned, no sign flip. | [inertia](knowledge/inertia.md) |
 | Q5 | Do the meshes appear in the right place in RViz? | Yes, the offline tests pass. Check on the first real run. | [mesh-export](knowledge/mesh-export.md), [ros2-package](knowledge/ros2-package.md) |
 | Q7 | Is the lidar on rft_robodog mounted upside down (subcomponents have roll 180°)? | Unknown. Check the scan direction in RViz. | [robodog](knowledge/robot-rft-robodog.md) |
-| Q9 | Which ROS 2 distribution(s) must the package support? | Any current ROS 2; nothing distro-specific is used. Not tested. | [ros2-package](knowledge/ros2-package.md) |
+| Q9 | Which ROS 2 distribution(s) must the package support? | Any current ROS 2; nothing distro-specific is used. Builds on Jazzy (2026-11-06); other distros not tested. | [ros2-package](knowledge/ros2-package.md) |
 | Q10 | Should the REP-103 axis option be a UI prompt or only a setting? | A setting in `ExportSettings`. | [0001](proposals/0001-ros-axis-convention.md) |
 | Q12 | What should the `package.xml` maintainer, email and license be? | Placeholders `todo` / `TODO`, edited by hand after export. | [ros2-package](knowledge/ros2-package.md#files) |
 | Q13 | What limits does a `prismatic` joint get when the Fusion slider has none (URDF requires limits)? | `lower = upper = 0` plus a warning; the user sets them in `joints_override.yaml`. | [0003](proposals/0003-joints-from-fusion-xacro.md#2-joint-types) |

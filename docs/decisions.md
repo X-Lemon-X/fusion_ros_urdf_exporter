@@ -106,8 +106,10 @@ Taken when v0.1 was written (delivered as a patch, on `main` since 2026-11-06).
   `<robot_name>_base_link`.** Why: one fixed, explicit root, and the robot
   name prefix keeps link names unique when several robots share a TF tree.
   → [exporter-pipeline.md](knowledge/exporter-pipeline.md#steps)
-- **Link frame = Fusion component origin.** Why: the designer sets joint
-  frames in Fusion by placing component origins; no extra markup needed.
+- ~~**Link frame = Fusion component origin.** Why: the designer sets joint
+  frames in Fusion by placing component origins; no extra markup needed.~~
+  Superseded on 2026-11-06 by the option B link frame rule (joint frame when
+  a joint exists).
   → [frames-and-units.md](knowledge/frames-and-units.md#frames)
 - **Keep axes 1:1 with Fusion for now.** Why: simplest correct mapping for
   testing the pipeline; the REP-103 option is planned.

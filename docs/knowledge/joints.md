@@ -112,7 +112,8 @@ by xacro at launch time, so they need no re-export.
 
 ## Known limitations (as of 2026-11-06)
 
-- Not run in real Fusion yet. The frame space of the joint vectors and
-  matrices is assumed to be world (Q21).
+- Not run in real Fusion on a model with joints yet: the first real export
+  (`ttt1`, 2026-11-06) read none (Q22). The frame space of the joint vectors
+  and matrices is assumed to be world (Q21).
 - No `mimic`, no closed loops, no joint types beyond the table above.
 - `parent`, `child`, `xyz`, `rpy` can't be overridden; change them in Fusion.

@@ -142,5 +142,7 @@ Joint names are `<link>_joint`.
 - Axes are kept 1:1 with Fusion. No REP-103 rotation, see
   [proposal 0001](../proposals/0001-ros-axis-convention.md).
 - STL only, so RViz shows no colours.
-- Not run in real Fusion yet. Only the [offline tests](development-setup.md#tests)
-  have passed. Exports from v0.1 (no marker file) count as foreign folders.
+- Run in real Fusion once (2026-11-06, rft_robodog → `ttt1`, Windows), on
+  a model where no joints were read (Q22). Joint reading is only covered by
+  the [offline tests](development-setup.md#tests).
+- Exports from v0.1 (no marker file) count as foreign folders.
