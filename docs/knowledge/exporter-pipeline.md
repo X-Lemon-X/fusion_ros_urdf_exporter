@@ -5,10 +5,9 @@ It runs inside Fusion and turns a prepared design into a ROS 2 description
 package: URDF, STL meshes, inertia, a display launch file and an RViz config.
 Everything is in `fusion_ros_urdf_exporter.py`, split into classes.
 
-Code state: v0.1. As of 2026-11-06 the code is **not on `main` yet**. It is in
-the patch `0001-Add-Fusion-360-URDF-ROS-2-package-exporter.patch`
-(dated 2026-10-27), which still has to be applied with `git am`. See
-[development-setup.md](development-setup.md#getting-the-code).
+Code state: v0.1, on `main` since 2026-11-06 (with the manifest and
+`tests/`). Accepted next steps: [0003](../proposals/0003-joints-from-fusion-xacro.md),
+[0004](../proposals/0004-package-folder-and-reexport.md).
 
 ## Preparing the model
 

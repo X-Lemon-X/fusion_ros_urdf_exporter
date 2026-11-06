@@ -2,6 +2,62 @@
 
 Newest first. One entry per decision: what, why, and where it is described.
 
+## 2026-11-06 — Joints, xacro output and package folder
+
+- **The tool is generic, for every robot model.** rft_robodog is only the
+  first test model. Why: the script will be used on future robots too, so
+  nothing may be specific to one model.
+- **Read joints from Fusion; a component without a joint is `fixed` to
+  `<pkg>_base_link`** (answers Q6). Why: the joints decide the parent/child
+  tree, which chains like arms need. Loose components (vendor sensors) just
+  go on the base, so they can be dropped into the model and land in the
+  right place in TF.
+  → [0003](proposals/0003-joints-from-fusion-xacro.md#1-topology-from-fusion-joints)
+- **Joint direction: `occurrenceOne` is the child, `occurrenceTwo` the
+  parent. A component with no parent (also the root of an "island") is
+  `fixed` to `<pkg>_base_link`.** Why: in Fusion component 1 is the one
+  mounted onto component 2. This also settles islands without guessing.
+  → [0003](proposals/0003-joints-from-fusion-xacro.md#1-topology-from-fusion-joints)
+- **Supported: rigid → `fixed`, revolute → `revolute`/`continuous`, slider
+  → `prismatic`. Other joint types → `fixed` + warning. Cycles → error.**
+  Why: other types are hard to map to URDF; URDF can't describe loops.
+  → [0003](proposals/0003-joints-from-fusion-xacro.md#2-joint-types)
+- **Link frame: the Fusion joint frame (point + axes) when the component
+  has a joint; the component origin when it has none, when the joint
+  geometry can't be read, or when `frame: origin` is set in
+  `joints_override.yaml`** (option B). Why: with a joint, its frame is the
+  real rotation point, so the part always rotates correctly in ROS without
+  placing origins by hand. `frame: origin` is the escape hatch for a badly
+  placed Fusion joint, so nobody has to repair the model in Fusion.
+  → [0003](proposals/0003-joints-from-fusion-xacro.md#3-joint-geometry)
+- ~~**Joint origins come from component origins, not from Fusion joint
+  geometry.** Why: Fusion joints in received models are often wrong, and
+  fixing them in Fusion can break half the design.~~ Superseded on
+  2026-11-06 by the option B rule above.
+- **One xacro joint macro with all parameters (`type`, `axis` default
+  `0 0 1`, `flip`, limits, effort, velocity).** Why: switching a joint's type
+  or direction becomes a one-word change.
+  → [0003](proposals/0003-joints-from-fusion-xacro.md#4-output-one-xacro-macro--two-yaml-files)
+- **Joint settings in YAML: `config/joints.yaml` (generated, always
+  overwritten) + `config/joints_override.yaml` (user, created once, never
+  overwritten).** Why: a single generated YAML would lose the user's edits
+  on re-export, and merging would need a YAML parser inside Fusion.
+  → [0003](proposals/0003-joints-from-fusion-xacro.md#4-output-one-xacro-macro--two-yaml-files)
+- **xacro is the output; no plain `.urdf` is written** (answers Q11). Why:
+  follows from the macro and YAML design; `xacro` turns it into a URDF when
+  needed.
+- **Root link name is hardcoded as `<pkg>_base_link`; no xacro prefix
+  parameter.** Why: the only sensible single convention.
+- **The chosen folder is the package folder, and its name is the package
+  and robot name. Empty → export; our previous export → regenerate,
+  keeping `joints_override.yaml`; anything else → refuse.** Why: the user
+  names the robot once, by creating the folder, and re-export must not
+  destroy user edits or unrelated files.
+  → [0004](proposals/0004-package-folder-and-reexport.md)
+- ~~Robot name from a separate input box; output in `<dir>/<robot_name>/`;
+  existing folder deleted on overwrite (v0.1).~~ Superseded on 2026-11-06 by
+  the folder rule above.
+
 ## 2026-11-06 — Project goal and scope
 
 - **Write our own Fusion 360 script instead of using an existing exporter
@@ -16,15 +72,15 @@ Newest first. One entry per decision: what, why, and where it is described.
   `colcon build` + `ros2 launch` works straight after export.
   → [ros2-package.md](knowledge/ros2-package.md)
 - **First version (v0.1): URDF with `fixed` joints, STL meshes, inertia,
-  display launch and RViz config.** xacro, real joints and collision come
-  later. Why: fixed joints are enough to test the whole pipeline (poses,
+  display launch and RViz config.** ~~xacro, real joints and collision come
+  later.~~ Superseded on 2026-11-06: xacro and real joints are the next step
+  ([0003](proposals/0003-joints-from-fusion-xacro.md)); collision still later. Why: fixed joints are enough to test the whole pipeline (poses,
   meshes, inertia) end to end first.
   → [proposals/README.md](proposals/README.md#planned-no-proposal-yet)
 
 ## 2026-10-27 — v0.1 design rules
 
-Taken when v0.1 was written (pending patch, see
-[development-setup.md](knowledge/development-setup.md#getting-the-code)).
+Taken when v0.1 was written (delivered as a patch, on `main` since 2026-11-06).
 
 - **Only visible top-level components become links; subcomponents stay in
   their parent's mesh and inertia. No hardcoded component list.** Why:

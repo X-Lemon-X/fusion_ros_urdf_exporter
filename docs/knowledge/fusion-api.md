@@ -37,7 +37,7 @@ no meaning. Move the origins (or add joint origins) before exporting.
 - GitHub's Python `.gitignore` template ignores `*.manifest` (a PyInstaller
   rule). The repo's `.gitignore` whitelists
   `!fusion_ros_urdf_exporter.manifest`, otherwise a fresh clone has no
-  manifest and Fusion doesn't see the script. (Added by the pending patch.)
+  manifest and Fusion doesn't see the script.
 - `adsk.doEvents()` keeps the UI responsive in the export loop.
 - `app.log(text)` writes to the Text Commands window.
 

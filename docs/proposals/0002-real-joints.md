@@ -1,6 +1,9 @@
 # 0002 Real joints (continuous, revolute, prismatic)
 
-Status: draft · Date: 2026-11-06
+Status: superseded by 0003 · Date: 2026-11-06
+
+Superseded on 2026-11-06 by [0003](0003-joints-from-fusion-xacro.md): joints
+are read from Fusion (option 1 below), with a YAML override file.
 
 ## Problem
 

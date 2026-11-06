@@ -19,13 +19,7 @@ git clone git@github.com:X-Lemon-X/fusion_ros_urdf_exporter.git
 Or clone anywhere and add it in Fusion: **Utilities → Add-Ins → Scripts and
 Add-Ins (Shift+S) → +**.
 
-As of 2026-11-06 `main` has only the initial commit. The v0.1 code is in a
-patch that has not been applied yet:
-
-```bash
-git am 0001-Add-Fusion-360-URDF-ROS-2-package-exporter.patch
-git push
-```
+Development happens directly on `main`.
 
 ## Editing and debugging
 
@@ -43,6 +37,8 @@ python -m unittest discover -s tests -v
 ```
 
 VS Code Testing panel: unittest, start dir `tests`, pattern `test_*.py`.
+
+Measured 2026-11-06: all 9 tests pass in 0.5 s on Python 3.12.10, Windows 11.
 
 | File | Content |
 |---|---|
