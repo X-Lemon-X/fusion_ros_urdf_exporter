@@ -52,6 +52,28 @@ Checked against the Autodesk API reference on 2026-11-06 (see
 - **Not documented:** the coordinate space of the axis vectors and the
   transforms. The exporter assumes world (root) coordinates (Q21).
 
+## Motion links
+
+Checked against the Autodesk API reference on 2026-11-09 (see
+[sources.md](../sources.md)); not yet run in real Fusion (Q25).
+
+- New in the **November 2025** Fusion API. Older versions have no
+  `motionLinks` attribute.
+- `Component.motionLinks` (collection: `count`, `item`, `itemByName`,
+  `createInput`, `add`); `Joint.motionLinks` gives the links of one joint.
+- `MotionLink`: `name`, `jointOne`, `jointTwo` (`Joint` or `AsBuiltJoint`;
+  `jointTwo` is null when both motions come from `jointOne`), `motionOne`,
+  `motionTwo` (`JointMotionTypes`), `valueOne`, `valueTwo`
+  (`ModelParameter`), `isReversed`, `isSuppressed`, `healthState`,
+  `errorOrWarningMessage`, `setMotionData(...)`.
+- A rigid joint is never valid in a motion link.
+- Values set as a real number are cm or rad. A string can carry units
+  (`"60 deg"`). The exporter reads `ModelParameter.value`, which is in the
+  same internal units (cm, rad).
+- **Not documented:** what `isReversed` reverses, and whether a positive
+  value means motion in the joint's positive direction. The exporter
+  assumes "joint two moves the other way" and "yes" (Q25).
+
 ## STEP imports
 
 After a STEP import, component origins often all sit at the world origin
@@ -77,3 +99,5 @@ no meaning. Move the origins (or add joint origins) before exporting.
 - The sign of the off-diagonal terms from `getXYZMomentsOfInertia` (Q3).
 - `occurrence.childOccurrences` and their `transform2` in world (root)
   coordinates, used for the mount frame (Q24).
+- Motion links: the signs of `isReversed` and of the values, and that
+  `valueOne` belongs to `jointOne` (Q25).

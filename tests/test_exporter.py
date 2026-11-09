@@ -22,8 +22,8 @@ sys.path.insert(0, os.path.dirname(HERE))
 import adsk.core  # noqa: E402  (fake)
 import fusion_ros_urdf_exporter as ue  # noqa: E402
 from fake_design import (FakeAsBuiltJoint, FakeDesign, FakeExportManager,  # noqa: E402
-                         FakeJoint, FakeOccurrence, Pose, box_corners, box_inertia_diag,
-                         robodog_joints, robodog_occurrences, rot_rpy)
+                         FakeJoint, FakeMotionLink, FakeOccurrence, Pose, box_corners,
+                         box_inertia_diag, robodog_joints, robodog_occurrences, rot_rpy)
 
 try:
     import xacro  # noqa: F401
@@ -146,9 +146,10 @@ class ExportTestBase(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.out, ignore_errors=True)
 
-    def export(self, occs, joints=(), as_built=(), frame="world", unit=0.001, expect_ok=True):
+    def export(self, occs, joints=(), as_built=(), frame="world", unit=0.001, expect_ok=True,
+               motion_links=None):
         em = FakeExportManager(frame, unit)
-        self.app.activeProduct = FakeDesign(occs, em, joints, as_built)
+        self.app.activeProduct = FakeDesign(occs, em, joints, as_built, motion_links)
         self.app.logs.clear()
         self.app.userInterface.messages.clear()
         ue.run("")
@@ -605,6 +606,149 @@ class MountTests(ExportTestBase):
         types = {j.get("name"): j.get("type") for j in root.findall("joint")}
         self.assertEqual(types, {"sdrac1_1_joint": "fixed", "axis1_1_joint": "continuous",
                                  "m": "fixed"})
+
+
+class MimicTests(ExportTestBase):
+    """Fusion motion links -> URDF <mimic>. Joint one leads, joint two follows."""
+
+    def gripper(self):
+        """Two revolute fingers, a slider, a revolute 'thumb', a rigid cover and a hidden part."""
+        base = box("base_link:1", Pose())
+        left = box("finger_l:1", Pose(translation=[-0.05, 0, 0.1]))
+        right = box("finger_r:1", Pose(translation=[0.05, 0, 0.1]))
+        plunger = box("plunger:1", Pose(translation=[0, 0, 0.2]))
+        thumb = box("thumb:1", Pose(translation=[0, 0.05, 0.1]))
+        cover = box("cover:1", Pose(translation=[0, 0, 0.3]))
+        hidden = box("hidden:1", Pose(translation=[0, 0, 0.4]), visible=False)
+        lim = (-0.5, 0.5)
+        j = {
+            "RevL": FakeJoint("RevL", left, base, REV, left.world, [0, 0, 1], 0.0, lim),
+            "RevR": FakeJoint("RevR", right, base, REV, right.world, [0, 0, 1], 0.0, lim),
+            "Slide": FakeJoint("Slide", plunger, base, SLIDER, plunger.world, [0, 0, 1], 0.0,
+                               (0.0, 2.0)),
+            "RevT": FakeJoint("RevT", thumb, base, REV, thumb.world, [0, 1, 0], 0.0, lim),
+            "Rigid": FakeJoint("Rigid", cover, base, RIGID, cover.world),
+            "RevH": FakeJoint("RevH", hidden, base, REV, hidden.world, [0, 0, 1]),
+        }
+        return [base, left, right, plunger, thumb, cover, hidden], j
+
+    def test_mimic_from_motion_links(self):
+        occs, j = self.gripper()
+        links = [
+            # 30 deg on the left finger turns the right one 30 deg the other way
+            FakeMotionLink("Motion Link1", j["RevL"], j["RevR"], math.radians(30),
+                           math.radians(30), reversed_=True),
+            # 90 deg on the left finger moves the plunger 1 cm (Fusion units: rad, cm)
+            FakeMotionLink("Motion Link2", j["RevL"], j["Slide"], math.pi / 2, 1.0),
+        ]
+        self.export(occs, list(j.values()), motion_links=links)
+        _, _, cfg = self.read_package()
+        r, p = cfg["finger_r_1_joint"], cfg["plunger_1_joint"]
+        self.assertEqual(r["mimic"], "finger_l_1_joint")
+        self.assertAlmostEqual(r["multiplier"], -1.0)
+        self.assertEqual(r["offset"], 0.0)
+        self.assertEqual(p["mimic"], "finger_l_1_joint")
+        self.assertAlmostEqual(p["multiplier"], 0.01 / (math.pi / 2), places=6)
+        self.assertNotIn("mimic", cfg["finger_l_1_joint"])
+        self.assertNotIn("mimic", cfg["thumb_1_joint"])
+        self.assertIn("mimics finger_l_1_joint, multiplier -1", self.summary)
+        self.assertIn("'Motion Link1': finger_r_1_joint mimics finger_l_1_joint, multiplier -1.",
+                      self.summary)
+        with open(os.path.join(self.pkg, "config", "joints.yaml"), encoding="utf-8") as f:
+            self.assertIn("# from Fusion motion link 'Motion Link2'", f.read())
+
+    def test_chain_is_collapsed_to_the_root_leader(self):
+        occs, j = self.gripper()
+        links = [FakeMotionLink("ML1", j["RevL"], j["RevR"], 1.0, 2.0),
+                 FakeMotionLink("ML2", j["RevR"], j["RevT"], 1.0, 3.0)]
+        self.export(occs, list(j.values()), motion_links=links)
+        _, _, cfg = self.read_package()
+        self.assertEqual(cfg["finger_r_1_joint"]["mimic"], "finger_l_1_joint")
+        self.assertAlmostEqual(cfg["finger_r_1_joint"]["multiplier"], 2.0)
+        self.assertEqual(cfg["thumb_1_joint"]["mimic"], "finger_l_1_joint")
+        self.assertAlmostEqual(cfg["thumb_1_joint"]["multiplier"], 6.0)
+        self.assertIn("thumb_1_joint mimics finger_l_1_joint (via finger_r_1_joint), multiplier 6.",
+                      self.summary)
+
+    def test_unusable_links_are_ignored_with_a_note(self):
+        occs, j = self.gripper()
+        links = [
+            FakeMotionLink("Same", j["RevL"], None, 1.0, 1.0),
+            FakeMotionLink("ToRigid", j["RevL"], j["Rigid"], 1.0, 1.0),
+            FakeMotionLink("ToHidden", j["RevL"], j["RevH"], 1.0, 1.0),
+            FakeMotionLink("Zero", j["RevL"], j["RevT"], 0.0, 1.0),
+            FakeMotionLink("Off", j["RevL"], j["RevT"], 1.0, 1.0, suppressed=True),
+            FakeMotionLink("First", j["RevL"], j["RevR"], 1.0, 1.0),
+            FakeMotionLink("Second", j["Slide"], j["RevR"], 1.0, 1.0),
+            FakeMotionLink("Back", j["RevR"], j["RevL"], 1.0, 1.0),
+        ]
+        self.export(occs, list(j.values()), motion_links=links)
+        _, _, cfg = self.read_package()
+        self.assertEqual(cfg["finger_r_1_joint"]["mimic"], "finger_l_1_joint")
+        for name in ("finger_l_1_joint", "thumb_1_joint", "cover_1_joint", "plunger_1_joint"):
+            self.assertNotIn("mimic", cfg[name], name)
+        s = self.summary
+        self.assertIn("'Same': links two motions of one joint (URDF can't) - ignored.", s)
+        self.assertIn("'ToRigid': joint 'Rigid' is exported as fixed - ignored.", s)
+        self.assertIn("'ToHidden': joint 'RevH' is not exported as a URDF joint - ignored.", s)
+        self.assertIn("'Zero': first value is 0 - ignored.", s)
+        self.assertNotIn("'Off'", s)
+        self.assertIn("'Second': finger_r_1_joint already follows finger_l_1_joint ('First')", s)
+        self.assertIn("'Back': would close a loop of motion links - ignored.", s)
+
+    def test_override_parser_mimic(self):
+        path = os.path.join(self.out, "o.yaml")
+        with open(path, "w") as f:
+            f.write("a_joint:\n  mimic: b_joint  # x\nc_joint:\n  mimic: null\n"
+                    "d_joint:\n  mimic: 'e_joint'\n")
+        self.assertEqual(ue.OverrideFile(path).mimics, {"a_joint": "b_joint", "d_joint": "e_joint"})
+
+    def test_unknown_mimic_leader_in_override_is_reported(self):
+        occs, j = self.gripper()
+        self.export(occs, list(j.values()))
+        with open(os.path.join(self.pkg, "config", "joints_override.yaml"), "a") as f:
+            f.write("thumb_1_joint:\n  mimic: finger_x_joint\n")
+        self.export(occs, list(j.values()))
+        self.assertIn("thumb_1_joint (mimic: finger_x_joint)", self.summary)
+
+    @unittest.skipUnless(HAVE_XACRO, "xacro not installed (pip install xacro)")
+    def test_real_xacro_mimic_and_flip(self):
+        occs, j = self.gripper()
+        links = [FakeMotionLink("ML1", j["RevL"], j["RevR"], 1.0, 1.0, reversed_=True),
+                 FakeMotionLink("ML2", j["RevL"], j["Slide"], 1.0, 2.0)]
+        self.export(occs, list(j.values()), motion_links=links)
+        path = os.path.join(self.pkg, "urdf", f"{ROBOT}.urdf.xacro")
+
+        def mimics():
+            root = ET.fromstring(xacro.process_file(path).toxml())
+            return {jn.get("name"): jn.find("mimic") for jn in root.findall("joint")}
+
+        def override(text):
+            with open(os.path.join(self.pkg, "config", "joints_override.yaml"), "a") as f:
+                f.write(text)
+
+        m = mimics()
+        self.assertEqual(m["finger_r_1_joint"].get("joint"), "finger_l_1_joint")
+        self.assertAlmostEqual(float(m["finger_r_1_joint"].get("multiplier")), -1.0)
+        self.assertAlmostEqual(float(m["finger_r_1_joint"].get("offset")), 0.0)
+        self.assertAlmostEqual(float(m["plunger_1_joint"].get("multiplier")), 0.02)
+        self.assertIsNone(m["finger_l_1_joint"])
+        self.assertIsNone(m["cover_1_joint"])
+
+        override("finger_r_1_joint:\n  flip: true\n  offset: 0.1\n")   # follower flipped
+        m = mimics()
+        self.assertAlmostEqual(float(m["finger_r_1_joint"].get("multiplier")), 1.0)
+        self.assertAlmostEqual(float(m["finger_r_1_joint"].get("offset")), -0.1)
+        override("finger_l_1_joint:\n  flip: true\n")                   # leader flipped too
+        m = mimics()
+        self.assertAlmostEqual(float(m["finger_r_1_joint"].get("multiplier")), -1.0)
+        self.assertAlmostEqual(float(m["plunger_1_joint"].get("multiplier")), -0.02)
+        override("plunger_1_joint:\n  mimic: null\n"
+                 "thumb_1_joint:\n  mimic: finger_l_1_joint\n  multiplier: 0.5\n")
+        m = mimics()
+        self.assertIsNone(m["plunger_1_joint"])
+        self.assertEqual(m["thumb_1_joint"].get("joint"), "finger_l_1_joint")
+        self.assertAlmostEqual(float(m["thumb_1_joint"].get("multiplier")), -0.5)
 
 if __name__ == "__main__":
     unittest.main()

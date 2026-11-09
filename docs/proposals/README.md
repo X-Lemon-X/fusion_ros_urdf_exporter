@@ -13,6 +13,7 @@ Status values: `draft` (being discussed) · `accepted` (we will do it) ·
 | [0003](0003-joints-from-fusion-xacro.md) | Joints from Fusion, xacro macro and YAML joint config | done |
 | [0004](0004-package-folder-and-reexport.md) | Package folder, name and re-export | done |
 | [0005](0005-mount-points.md) | Mount points: attach separately exported robots | done |
+| [0006](0006-mimic-from-motion-links.md) | Mimic joints from Fusion motion links | done |
 
 ## Planned, no proposal yet
 

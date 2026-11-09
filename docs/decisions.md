@@ -2,6 +2,23 @@
 
 Newest first. One entry per decision: what, why, and where it is described.
 
+## 2026-11-09 — Mimic joints from Fusion motion links
+
+- **Fusion motion links become URDF `<mimic>`; the joint selected first
+  (`jointOne`) leads, `jointTwo` follows.** Why: Fusion already knows the
+  ratio, so the user doesn't type it again. A motion link is symmetric,
+  and the first selection is the natural leader. Decided by the project
+  owner. → [0006](proposals/0006-mimic-from-motion-links.md)
+- **`mimic`, `multiplier` and `offset` go into `joints.yaml`, overridable
+  per joint.** Why: same rule as every other joint value
+  ([0003](proposals/0003-joints-from-fusion-xacro.md)): change at launch
+  time, no re-export.
+- **`multiplier`/`offset` are stated before `flip`; the macro applies the
+  flip of both joints.** Why: flipping a joint must not break the
+  coupling (one finger closing, the other opening).
+- **Chains are collapsed to the root leader.** Why: not every URDF
+  consumer follows a mimic of a mimic.
+
 ## 2026-11-06 — Modular robots through mount points
 
 - **A module (arm, gripper, sensor) is exported as its own package and

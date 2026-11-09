@@ -6,6 +6,30 @@ linked pages; this file is the short version.
 
 ---
 
+## 2026-11-09 — Mimic joints from Fusion motion links (0006)
+
+**Done**
+- Checked the Fusion API: motion links are readable since November 2025
+  (`Component.motionLinks`) → [fusion-api.md](knowledge/fusion-api.md#motion-links).
+- Implemented `MotionLinkReader` and `MimicResolver`:
+  - a motion link becomes `mimic` / `multiplier` / `offset` in `joints.yaml`;
+  - the macro writes `<mimic>`, with `flip` of both joints applied;
+  - chains are collapsed, and unusable links are listed in the summary.
+
+  6 new tests; 37 pass, including real xacro 2.1.1 →
+  [0006](proposals/0006-mimic-from-motion-links.md),
+  [joints.md](knowledge/joints.md#mimic-joints-fusion-motion-links).
+- README: section "Mimic joints (Fusion motion links)".
+
+**Decisions** → [decisions.md](decisions.md#2026-11-09--mimic-joints-from-fusion-motion-links):
+`jointOne` leads; values overridable in YAML; flip applied automatically;
+chains collapsed.
+
+**Next**
+- Export a model with motion links in real Fusion (e.g. a two-finger
+  gripper, one link with Reverse ticked) and check the signs in RViz (Q25).
+- Check mimic support in Isaac Sim and ros2_control (Q26).
+
 ## 2026-11-06 — Plain URDF for Isaac Sim
 
 **Done**

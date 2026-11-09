@@ -32,10 +32,12 @@ Code state: joints from Fusion and the package-folder rules
 ```
 UserPrompt            folder dialog → package folder
 PackageFolder.check   name valid? empty / previous export / foreign
-OverrideFile          read keys and frame: from config/joints_override.yaml
+OverrideFile          read keys, frame:, mount:, mimic: from config/joints_override.yaml
 FusionModelReader     visible top-level occurrences, base_link        (no files written yet)
 JointReader           root joints + as-built joints
 KinematicTree         parents, link frames, joint types; errors       → joints.md
+MotionLinkReader,     motion links → <mimic> on the follower          → joints.md
+  MimicResolver
 for each link:
   InertiaCalculator   mass, COM, inertia in link frame               → inertia.md
   MeshExporter        STL + frame/unit detection                     → mesh-export.md
@@ -55,7 +57,8 @@ summary dialog + Text Commands log (app.log)
    written again are deleted. The marker file is rewritten.
 6. The summary lists each link with its Fusion name, mesh frame and unit,
    mass, joint type, parent, joint source, frame source, pose and warnings;
-   then override keys without a joint, removed files, and whether the
+   then the motion links (used or ignored, with the reason), override
+   keys without a joint, removed files, and whether the
    override file was created. It goes to a message box and to `app.log`
    (File → View → Show Text Commands).
 
@@ -106,13 +109,14 @@ Joint names are `<link>_joint`.
 | `clean`, `fmt_pose`, `fmt_num`, `fmt_yaml_float` | Number formatting |
 | `Pose` | Rigid transform, see [frames-and-units.md](frames-and-units.md#pose-class) |
 | `NameSanitizer`, `UniqueNamer` | ROS-safe, unique link names |
-| `InertialInfo`, `FusionJoint`, `JointSpec`, `ComponentInfo` | Data collected during export |
+| `InertialInfo`, `FusionJoint`, `FusionMotionLink`, `MimicSpec`, `JointSpec`, `ComponentInfo` | Data collected during export |
 | `ExportCancelled`, `ExportError` | Cancel vs. user-fixable error |
 | `UserPrompt` | Folder dialog and message box |
 | `PackageFolder` | Name check, folder classification, marker, stale files |
-| `OverrideFile` | Override template; reads keys and `frame:` |
+| `OverrideFile` | Override template; reads keys, `frame:`, `mount:` and `mimic:` |
 | `FusionModelReader` | Find base, collect components and their poses |
 | `JointReader`, `KinematicTree` | Fusion joints → tree, see [joints.md](joints.md) |
+| `MotionLinkReader`, `MimicResolver` | Fusion motion links → `<mimic>`, see [joints.md](joints.md#mimic-joints-fusion-motion-links) |
 | `InertiaCalculator` | Fusion properties → URDF `<inertial>` |
 | `StlReader`, `MeshFrameDetector`, `MeshExporter` | STL export and frame/unit detection |
 | `JOINT_MACRO`, `XacroBuilder`, `JointsYamlWriter` | xacro and `joints.yaml` text |

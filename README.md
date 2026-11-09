@@ -3,7 +3,8 @@
 A Fusion 360 script that exports the open design to a ready-to-build
 **ROS 2 description package** (ament_python). The package contains:
 
-- a xacro file with real joints
+- a xacro file with real joints, including mimic joints from Fusion
+  motion links
 - STL meshes
 - masses and inertia
 - a joint config you can edit
@@ -129,6 +130,37 @@ Joints between top-level components build the tree. In every joint:
 
    ![Joint motion and limits](docs/images/joint_image_config_2.png)
 
+#### Mimic joints (Fusion motion links)
+
+Joints that move together, like the two fingers of a gripper, are
+supported. Link them in Fusion and the export writes a URDF `<mimic>`.
+
+1. Make both joints as usual (revolute or slider, each with its own
+   parent).
+2. **Assemble → Motion Link.** Pick the **leading joint first**, then the
+   joint that follows it. Enter how far each one moves, e.g. `30 deg` and
+   `30 deg`, or `360 deg` and `10 mm` for a screw. Tick **Reverse** if
+   the second joint turns the other way, like a closing finger.
+3. Export. The second joint gets
+   `<mimic joint="<first joint>" multiplier="..." offset="0"/>`, with
+   `multiplier = second value / first value` in rad and m, negative when
+   Reverse is ticked. The summary lists every motion link under
+   `Motion links:`, and the reason for any that was ignored.
+
+Good to know:
+
+- In RViz, `joint_state_publisher_gui` shows no slider for a mimic joint;
+  it moves with its leader.
+- If A drives B and B drives C, C mimics A directly (multipliers
+  multiplied), because many URDF tools don't follow a mimic of a mimic.
+- Ignored, with a note: a link to a rigid or hidden joint, a link between
+  two motions of one joint, a second leader for the same joint, and a
+  link that would close a loop.
+- Needs Fusion from November 2025 or newer. Older versions export as
+  before, without mimic joints.
+- To change or remove a mimic without exporting again, see
+  [Changing joints without touching Fusion](#changing-joints-without-touching-fusion).
+
 ### 3. The pose you export in becomes zero
 
 The URDF zero of every joint is **the position the joint has in Fusion when
@@ -176,6 +208,7 @@ The summary is also printed in **Text Commands**. For each link it shows:
 | `Mesh frame check uncertain ... verify in RViz` | Check the part in RViz. |
 | `Joint '...' is cylindrical - exported as fixed` | Use a revolute or slider joint, or set `type` in the override. |
 | `Slider '...' has no limits` | Enable both limits in Fusion, or set `lower`/`upper` in the override. |
+| `'Motion Link1': ... - ignored.` | The motion link gives no mimic; the reason is in the line. Both joints must be exported as revolute, continuous or prismatic. |
 
 `mesh: world frame` on a component that sits at the world origin (here
 `base_link`, `wheel_1`) is normal.
@@ -279,10 +312,28 @@ wheel_left_front_1_joint:
   velocity: 1.0         # rad/s or m/s
   frame: origin         # joint | origin – applied on the next export
   mount: true           # empty link for another package – applied on the next export
+  mimic: wheel_left_back_1_joint  # follow this joint (URDF <mimic>); null removes it
+  multiplier: 1.0       # position = multiplier · leader + offset
+  offset: 0.0           # rad or m
 ```
 
 `frame: origin` uses the component origin as the link frame instead of the
 Fusion joint frame. Use it when a joint in Fusion is badly placed.
+
+Mimic joints from Fusion motion links are in `joints.yaml` and can be
+changed here too:
+
+```yaml
+finger_r_1_joint:
+  mimic: null           # remove the mimic that came from Fusion
+thumb_1_joint:
+  mimic: finger_l_1_joint   # add one Fusion doesn't have
+  multiplier: 0.5
+```
+
+Give `multiplier` and `offset` as if neither joint had `flip: true`. The
+flip of both joints is applied for you, so flipping a joint never makes a
+gripper open one finger while closing the other.
 
 ## Modular robots (arm, gripper on a base)
 
@@ -329,6 +380,8 @@ sensor as a mount and attach the vendor's URDF to that link.
 | All joints `fixed` with "no joint" | Add joints between the top-level components (component 1 = child). |
 | `continuous` instead of `revolute` | Enable both limits on the Fusion joint. |
 | Part turns the wrong way | `flip: true` in the override. |
+| Mimic joint moves the wrong way | Tick or untick **Reverse** on the motion link and export again, or set `multiplier` in the override. |
+| No mimic joint although there is a motion link | See `Motion links:` in the summary. Fusion before November 2025 has no motion link API. |
 | Part turns about the wrong point | Fix the joint in Fusion, or `frame: origin` and export again. |
 | Wrong mass | Assign materials. |
 | Script refuses the folder | Choose an empty folder or a previous export. |
@@ -341,8 +394,8 @@ The tests run outside Fusion with a fake `adsk` module and simulated designs:
 python -m unittest discover -s tests -v
 ```
 
-With `pip install xacro` one more test runs the generated package through
-real xacro.
+With `pip install xacro` three more tests run the generated package
+through real xacro.
 
 ## License
 

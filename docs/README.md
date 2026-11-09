@@ -24,7 +24,7 @@ Knowledge
 - [Exporter pipeline](knowledge/exporter-pipeline.md): overview, steps, package folder, naming, settings, classes
 - [Frames and units](knowledge/frames-and-units.md): the unit and frame reference
 - [Mesh export](knowledge/mesh-export.md): STL export and world/local + unit detection
-- [Joints and kinematic tree](knowledge/joints.md): Fusion joints → URDF, xacro macro, YAML config
+- [Joints and kinematic tree](knowledge/joints.md): Fusion joints → URDF, mimic from motion links, xacro macro, YAML config
 - [Inertia](knowledge/inertia.md): mass, COM, tensor
 - [Generated ROS 2 package](knowledge/ros2-package.md)
 - [Fusion 360 API facts](knowledge/fusion-api.md)
@@ -39,6 +39,7 @@ Proposals
 - [0003 Joints from Fusion, xacro macro and YAML joint config](proposals/0003-joints-from-fusion-xacro.md)
 - [0004 Package folder, name and re-export](proposals/0004-package-folder-and-reexport.md)
 - [0005 Mount points: attach separately exported robots](proposals/0005-mount-points.md)
+- [0006 Mimic joints from Fusion motion links](proposals/0006-mimic-from-motion-links.md)
 - Roadmap items without a proposal yet: [proposals/README.md](proposals/README.md#planned-no-proposal-yet)
 
 ## Conventions

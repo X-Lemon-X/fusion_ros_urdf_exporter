@@ -224,3 +224,6 @@ __marimo__/
 
 
 package_tests
+
+
+.vscode/browse**

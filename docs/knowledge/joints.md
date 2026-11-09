@@ -1,4 +1,4 @@
-# Joints and kinematic tree (`JointReader`, `KinematicTree`, `fusion_joint.xacro`)
+# Joints and kinematic tree (`JointReader`, `KinematicTree`, `MimicResolver`, `fusion_joint.xacro`)
 
 How the exporter turns Fusion joints into URDF joints, and how the user
 changes them afterwards. Designed in
@@ -85,10 +85,13 @@ The joint origin in URDF is `inv(T_parent_link) · T_link`
   `joints_override.yaml` if set, else `joints.yaml`. `flip: true` multiplies
   the axis by −1 and turns `[lower, upper]` into `[−upper, −lower]`. `fixed`
   gets no `<axis>`; `revolute`/`prismatic` get `<limit lower upper effort
-  velocity>`; `continuous` gets `<limit effort velocity>`.
+  velocity>`; `continuous` gets `<limit effort velocity>`. A non-fixed
+  joint with `mimic` gets `<mimic>`, see
+  [mimic joints](#mimic-joints-fusion-motion-links).
 - `config/joints.yaml`: per joint `type`, `axis`, `flip: false`, `lower`,
   `upper`, `effort` (`10.0`), `velocity` (`1.0`), with a comment naming the
-  parent, the Fusion joint and the frame source. Floats always have a `.`
+  parent, the Fusion joint and the frame source. A follower of a motion
+  link also has `mimic`, `multiplier` and `offset`. Floats always have a `.`
   (`fmt_yaml_float`), because YAML 1.1 parsers read `1e-05` as a string.
   With no joints the file is `{}`.
 - `config/joints_override.yaml`: created once from `OverrideFile.TEMPLATE`
@@ -104,9 +107,14 @@ line parser, not a YAML library:
 - `frame: joint|origin` under a key, applied on the next export,
 - `mount: true|false` under a key (also `yes`/`no`), applied on the next
   export.
+- `mimic: <joint>` under a key, only to list a leader that is not an
+  exported joint in the summary, as
+  `joints_override.yaml entries without a matching joint: <joint> (mimic: <leader>)`.
+  `mimic: null` (also `~` or empty) is not checked.
 
-Other keys (`type`, `axis`, `flip`, limits, `effort`, `velocity`) are read
-by xacro at launch time, so they need no re-export.
+Other keys (`type`, `axis`, `flip`, limits, `effort`, `velocity`, `mimic`,
+`multiplier`, `offset`) are read by xacro at launch time, so they need no
+re-export.
 
 ## Mount points (`mount: true`)
 
@@ -140,6 +148,72 @@ file has `mount: true` on a link's joint, the next export does this:
   a robot package with a mount and a separately exported arm package in one
   xacro. Real xacro 2.1.1 accepts it (2026-11-06).
 
+## Mimic joints (Fusion motion links)
+
+Proposal [0006](../proposals/0006-mimic-from-motion-links.md). A Fusion
+motion link between two exported joints becomes a URDF `<mimic>` on the
+follower.
+
+Reading (`MotionLinkReader`):
+- Reads `rootComponent.motionLinks`. If the attribute is missing (Fusion
+  before November 2025) or not readable, there are no motion links.
+- Suppressed links (`isSuppressed`) are skipped without a note.
+- Per link: `name`, `jointOne.name`, `jointTwo.name` (null for a link
+  between two motions of one joint), `valueOne.value`, `valueTwo.value`
+  (`ModelParameter.value`, in Fusion units: rad or cm), `isReversed`.
+- Every API call is wrapped, like in `JointReader`.
+
+Resolving (`MimicResolver.resolve`, after `KinematicTree.build`):
+- A Fusion joint is matched to its URDF joint by name (`JointSpec.source`).
+- **`jointOne` leads, `jointTwo` follows.**
+- `multiplier = (valueTwo · u₂) / (valueOne · u₁)`, × −1 when `isReversed`.
+  `u` is `CM_TO_M` for a `prismatic` joint and 1 otherwise. `offset` is
+  always `0.0`, because both joints are 0 at the export pose.
+- Chains are collapsed. If A → B (×2) and B → C (×3), C mimics A with
+  multiplier 6, and the summary says `(via b_joint)`.
+- Skipped, with a line `'<link>': <reason> - ignored.` in the summary
+  section `Motion links:`:
+
+  | Reason | Case |
+  |---|---|
+  | `first joint not readable` | `jointOne` missing |
+  | `links two motions of one joint (URDF can't)` | `jointTwo` null |
+  | `links a joint to itself` | same name on both sides |
+  | `joint '…' is not exported as a URDF joint` | hidden, internal, unused duplicate, not in the root component |
+  | `joint name '…' is not unique` | two URDF joints from Fusion joints with the same name |
+  | `joint '…' is exported as fixed` | rigid, or an unsupported type |
+  | `first value is 0` | `valueOne` = 0 |
+  | `<f> already follows <l> ('<link>')` | a second leader for the same follower; the first link wins |
+  | `would close a loop of motion links` | e.g. A → B, then B → A |
+
+- A used link gives `'<link>': <follower> mimics <leader>, multiplier <k>.`
+  in `Motion links:`, and `mimics <leader>, multiplier <k>` under the
+  follower's link.
+
+Output:
+- `joints.yaml`, on the follower only:
+  ```yaml
+    # from Fusion motion link 'Motion Link1'
+    mimic: finger_l_1_joint
+    multiplier: -1.0
+    offset: 0.0
+  ```
+- The macro writes
+  `<mimic joint="${mimic}" multiplier="${js·jls·multiplier}" offset="${js·offset}"/>`
+  when `mimic` is set and not empty, and the joint type is not `fixed`.
+  `js` and `jls` are −1 when the follower or the leader has `flip: true`.
+  So `multiplier` and `offset` in the YAML files are stated as if neither
+  joint were flipped. The leader's `flip` is looked up in the override
+  file, then in `joints.yaml`. An unknown leader counts as not flipped.
+- In `joints_override.yaml`: `mimic: null` removes a mimic from Fusion,
+  `mimic: <joint>` with `multiplier` / `offset` adds one or changes it.
+  To make the other joint the leader, set `mimic: null` on the old
+  follower, and on the old leader set `mimic: <old follower>` and
+  `multiplier: 1/k`.
+- Tested with real xacro 2.1.1 (`MimicTests.test_real_xacro_mimic_and_flip`,
+  2026-11-09): mimic from Fusion, follower flipped, both flipped,
+  `mimic: null`, and a mimic added in the override.
+
 ## xacro facts (measured with xacro 2.1.1 from PyPI, 2026-11-06)
 
 - `xacro.load_yaml` with a path relative to the current xacro file works.
@@ -160,7 +234,13 @@ file has `mount: true` on a link's joint, the next export does this:
   [robot-spoon-bot.md](robot-spoon-bot.md)). Tree, axes and limits are
   plausible. Whether the parts turn about the right lines in RViz is not
   checked yet (Q21).
-- No `mimic`, no closed loops, no joint types beyond the table above.
+- ~~No `mimic`, no closed loops, no joint types beyond the table above.~~
+  Superseded on 2026-11-09: `mimic` from Fusion motion links, see
+  [mimic joints](#mimic-joints-fusion-motion-links). Still no closed loops,
+  and no joint types beyond the table above.
+- Mimic joints not run in real Fusion yet. The signs (`isReversed`, which
+  value belongs to which joint) are assumed from the API reference (Q25).
+- Motion links inside a top-level component are not read, like joints.
 - Joints inside one top-level component (for example an arm design
   inserted as one component) are not read and not reported. Use a mount
   point instead ([0005](../proposals/0005-mount-points.md)).

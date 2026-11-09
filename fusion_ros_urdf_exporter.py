@@ -14,6 +14,8 @@ How it works
   slider -> prismatic, anything else -> fixed (with a warning).
 * Link frame = the Fusion joint frame when the component has a joint,
   otherwise the component origin.
+* Fusion motion links between two exported joints become URDF ``<mimic>``:
+  joint one leads, joint two follows.
 * Meshes are binary STL. Each STL's frame (world/local) and unit (mm/cm/m)
   is detected from its bounding box.
 * Inertia comes from Fusion's physical properties (assign materials!).
@@ -268,6 +270,26 @@ class FusionJoint:
 
 
 @dataclass
+class FusionMotionLink:
+    """One Fusion motion link: joint one moves value_one while joint two moves value_two."""
+    name: str
+    joint_one: Optional[str]        # Fusion joint names; joint_two None = same-joint link
+    joint_two: Optional[str]
+    value_one: float                # Fusion units: rad or cm
+    value_two: float
+    is_reversed: bool = False
+
+
+@dataclass
+class MimicSpec:
+    """URDF <mimic>: position = multiplier * leader position + offset."""
+    leader: str                     # URDF joint name
+    multiplier: float
+    offset: float = 0.0
+    sources: List[str] = field(default_factory=list)   # Fusion motion link names
+
+
+@dataclass
 class JointSpec:
     """URDF joint between a link and its parent."""
     name: str
@@ -276,6 +298,7 @@ class JointSpec:
     lower: float = 0.0
     upper: float = 0.0
     source: str = "none"            # Fusion joint name, or "none"
+    mimic: Optional[MimicSpec] = None
 
 
 @dataclass
@@ -396,7 +419,8 @@ class OverrideFile:
 
     Only what is applied at export time is read here: the top-level joint
     names (to report orphans), `frame: joint|origin` and `mount: true|false`
-    per joint. Everything else in the file is read by xacro.
+    per joint, and `mimic: <joint>` (to report unknown leaders). Everything
+    else in the file is read by xacro.
     """
 
     TEMPLATE = """# Your joint settings. Created once by fusion_ros_urdf_exporter and NEVER
@@ -416,6 +440,13 @@ class OverrideFile:
 #                                  exported on its own is attached, e.g. an arm.
 #                                  Frame = its 'base_link' subcomponent.
 #                                  Applied on the next export from Fusion.
+#   mimic:    other_joint | null   follow another joint (URDF <mimic>). Fusion
+#                                  motion links set this in joints.yaml;
+#                                  null removes it.
+#   multiplier: 1.0                position = multiplier * leader + offset.
+#   offset:   0.0                  [rad] or [m]. Both as if neither joint had
+#                                  flip: true; flip on either joint is applied
+#                                  for you.
 #
 # Example:
 # wheel_left_1_joint:
@@ -426,12 +457,14 @@ class OverrideFile:
     TOP_KEY = re.compile(r"^([A-Za-z0-9_]+)\s*:\s*(#.*)?$")
     FRAME = re.compile(r"^\s+frame\s*:\s*['\"]?(joint|origin)['\"]?\s*(#.*)?$")
     MOUNT = re.compile(r"^\s+mount\s*:\s*(true|false|True|False|yes|no)\s*(#.*)?$")
+    MIMIC = re.compile(r"^\s+mimic\s*:\s*['\"]?([A-Za-z0-9_~]*)['\"]?\s*(#.*)?$")
 
     def __init__(self, path: str):
         self.path = path
         self.keys: List[str] = []
         self.frames: Dict[str, str] = {}
         self.mounts: Set[str] = set()
+        self.mimics: Dict[str, str] = {}      # joint -> leader it mimics (null ones left out)
         if os.path.isfile(path):
             self._parse()
 
@@ -456,6 +489,12 @@ class OverrideFile:
                         self.mounts.add(current)
                     else:
                         self.mounts.discard(current)
+                mimic = self.MIMIC.match(line)
+                if mimic and current:
+                    if mimic.group(1) in ("", "~", "null", "Null", "NULL"):
+                        self.mimics.pop(current, None)
+                    else:
+                        self.mimics[current] = mimic.group(1)
 
     def create_if_missing(self) -> bool:
         if os.path.exists(self.path):
@@ -611,6 +650,36 @@ class JointReader:
             info.value = (self._safe(lambda: motion.slideValue, 0.0) or 0.0) * CM_TO_M
             info.lower, info.upper = self._limits(self._safe(lambda: motion.slideLimits), CM_TO_M)
         return info
+
+
+class MotionLinkReader:
+    """Reads the motion links of the root component (Fusion API since November 2025).
+
+    Older Fusion versions have no `motionLinks`: then there are none.
+    """
+
+    def __init__(self, design):
+        self.design = design
+
+    def read(self) -> List[FusionMotionLink]:
+        safe = JointReader._safe
+        collection = safe(lambda: self.design.rootComponent.motionLinks)
+        if collection is None:
+            return []
+        result: List[FusionMotionLink] = []
+        for ml in collection:
+            if safe(lambda: ml.isSuppressed, False):
+                continue
+            j1, j2 = safe(lambda: ml.jointOne), safe(lambda: ml.jointTwo)
+            result.append(FusionMotionLink(
+                name=safe(lambda: ml.name, "?"),
+                joint_one=safe(lambda: j1.name) if j1 is not None else None,
+                joint_two=safe(lambda: j2.name) if j2 is not None else None,
+                value_one=safe(lambda: ml.valueOne.value, 0.0) or 0.0,
+                value_two=safe(lambda: ml.valueTwo.value, 0.0) or 0.0,
+                is_reversed=bool(safe(lambda: ml.isReversed, False)),
+            ))
+        return result
 
 
 # =============================================================================
@@ -807,6 +876,95 @@ class KinematicTree:
         return ordered
 
 
+class MimicResolver:
+    """Fusion motion links -> URDF <mimic> on the follower's JointSpec.
+
+    * joint one leads, joint two follows
+    * multiplier = value_two / value_one (SI), negated when reversed. The
+      offset is 0: every URDF joint is 0 at the export pose, where the
+      link already holds.
+    * chains (A -> B -> C) are collapsed so every follower mimics the root
+      leader; a second leader for the same follower, or a loop, is ignored
+    """
+
+    def resolve(self, components: List[ComponentInfo],
+                links: List[FusionMotionLink]) -> List[str]:
+        """Sets `joint.mimic` on followers; returns one summary line per motion link."""
+        by_source: Dict[str, List[ComponentInfo]] = {}
+        for c in components:
+            if c.joint is not None and c.joint.source != "none":
+                by_source.setdefault(c.joint.source, []).append(c)
+
+        # follower URDF joint -> (leader URDF joint, multiplier, motion link name)
+        edges: Dict[str, Tuple[str, float, str]] = {}
+        follower_comp: Dict[str, ComponentInfo] = {}
+        notes: List[str] = []
+        for ml in links:
+            reason = self._check(ml, by_source)
+            if reason:
+                notes.append(f"'{ml.name}': {reason} - ignored.")
+                continue
+            leader, follower = by_source[ml.joint_one][0], by_source[ml.joint_two][0]
+            ln, fn = leader.joint.name, follower.joint.name
+            if fn in edges:
+                notes.append(f"'{ml.name}': {fn} already follows {edges[fn][0]} "
+                             f"('{edges[fn][2]}') - ignored.")
+                continue
+            if self._root(ln, edges)[0] == fn:
+                notes.append(f"'{ml.name}': would close a loop of motion links - ignored.")
+                continue
+            k = (ml.value_two * self._unit(follower.joint)) / (ml.value_one * self._unit(leader.joint))
+            edges[fn] = (ln, -k if ml.is_reversed else k, ml.name)
+            follower_comp[fn] = follower
+
+        for fn, (ln, _, name) in edges.items():
+            root, k, sources, via = self._root(fn, edges)
+            follower_comp[fn].joint.mimic = MimicSpec(leader=root, multiplier=k,
+                                                      sources=sources)
+            chain = f" (via {', '.join(via)})" if via else ""
+            notes.append(f"'{name}': {fn} mimics {root}{chain}, multiplier {fmt_num(k)}.")
+        return notes
+
+    @staticmethod
+    def _unit(spec: JointSpec) -> float:
+        """Fusion value -> SI: cm -> m for sliders, rad stays rad."""
+        return CM_TO_M if spec.joint_type == "prismatic" else 1.0
+
+    @staticmethod
+    def _check(ml: FusionMotionLink, by_source: Dict[str, List[ComponentInfo]]) -> str:
+        if ml.joint_one is None:
+            return "first joint not readable"
+        if ml.joint_two is None:
+            return "links two motions of one joint (URDF can't)"
+        if ml.joint_one == ml.joint_two:
+            return "links a joint to itself"
+        for jn in (ml.joint_one, ml.joint_two):
+            comps = by_source.get(jn, [])
+            if not comps:
+                return f"joint '{jn}' is not exported as a URDF joint"
+            if len(comps) > 1:
+                return f"joint name '{jn}' is not unique"
+            if comps[0].joint.joint_type == "fixed":
+                return f"joint '{jn}' is exported as fixed"
+        if abs(ml.value_one) < 1e-12:
+            return "first value is 0"
+        return ""
+
+    @staticmethod
+    def _root(fn: str, edges: Dict[str, Tuple[str, float, str]]):
+        """Follows leaders up to the root: (root joint, total multiplier,
+        motion link names, joints in between). Loop-free by construction."""
+        k, sources, via, node = 1.0, [], [], fn
+        while node in edges:
+            leader, m, name = edges[node]
+            k *= m
+            sources.append(name)
+            if node != fn:
+                via.append(node)
+            node = leader
+        return node, k, sources, via
+
+
 # =============================================================================
 # Inertia
 # =============================================================================
@@ -985,6 +1143,8 @@ JOINT_MACRO = """<?xml version="1.0"?>
      changed per joint in config/joints_override.yaml.
      cfg / override are the loaded YAML files, passed in so that several
      exported packages can be included in one xacro file.
+     mimic: multiplier and offset are given as if neither joint had flip: true;
+     the flip of this joint (js) and of the leader (jls) is applied here.
      Note: inside ${} use dict() instead of {} (xacro ends ${ at the first }). -->
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro">
   <xacro:macro name="fusion_joint" params="name parent child xyz rpy cfg override">
@@ -997,6 +1157,7 @@ JOINT_MACRO = """<?xml version="1.0"?>
     <xacro:property name="jup" value="${float(jo.get('upper', jd['upper']))}"/>
     <xacro:property name="jeffort" value="${jo.get('effort', jd['effort'])}"/>
     <xacro:property name="jvel" value="${jo.get('velocity', jd['velocity'])}"/>
+    <xacro:property name="jmimic" value="${jo.get('mimic', jd.get('mimic'))}"/>
     <joint name="${name}" type="${jtype}">
       <parent link="${parent}"/>
       <child link="${child}"/>
@@ -1010,6 +1171,13 @@ JOINT_MACRO = """<?xml version="1.0"?>
       </xacro:if>
       <xacro:if value="${jtype == 'continuous'}">
         <limit effort="${jeffort}" velocity="${jvel}"/>
+      </xacro:if>
+      <xacro:if value="${jmimic is not None and jmimic != '' and jtype != 'fixed'}">
+        <xacro:property name="jlo_" value="${(override or dict()).get(jmimic) or dict()}"/>
+        <xacro:property name="jls" value="${-1 if jlo_.get('flip', (cfg.get(jmimic) or dict()).get('flip', False)) else 1}"/>
+        <mimic joint="${jmimic}"
+               multiplier="${js * jls * float(jo.get('multiplier', jd.get('multiplier', 1.0)))}"
+               offset="${js * float(jo.get('offset', jd.get('offset', 0.0))) + 0.0}"/>
       </xacro:if>
     </joint>
   </xacro:macro>
@@ -1113,8 +1281,16 @@ class JointsYamlWriter:
                 f"  upper: {f(j.upper)}",
                 f"  effort: {f(self.settings.default_effort)}",
                 f"  velocity: {f(self.settings.default_velocity)}",
-                "",
             ]
+            if j.mimic is not None:
+                links = ", ".join(f"'{s}'" for s in j.mimic.sources)
+                lines += [
+                    f"  # from Fusion motion link {links}",
+                    f"  mimic: {j.mimic.leader}",
+                    f"  multiplier: {f(j.mimic.multiplier)}",
+                    f"  offset: {f(j.mimic.offset)}",
+                ]
+            lines.append("")
         if len(lines) == 4:
             lines.append("{}")      # no joints at all: still a valid (empty) mapping
         return "\n".join(lines)
@@ -1300,6 +1476,7 @@ class RobotExporter:
         joints = JointReader(design).read()
         components = KinematicTree(self.settings).build(components, joints, overrides.frames,
                                                         overrides.mounts)
+        link_notes = MimicResolver().resolve(components, MotionLinkReader(design).read())
 
         inertia = InertiaCalculator(self.settings)
         meshes = MeshExporter(design, self.settings)
@@ -1331,13 +1508,17 @@ class RobotExporter:
 
         joint_names = {c.joint.name for c in components if c.joint}
         orphans = [k for k in overrides.keys if k not in joint_names]
-        summary = self._summary(folder, components, removed, orphans, created_override)
+        orphans += [f"{k} (mimic: {v})" for k, v in overrides.mimics.items()
+                    if k in joint_names and v not in joint_names]
+        summary = self._summary(folder, components, removed, orphans, created_override,
+                                link_notes)
         app.log(summary)
         self.prompt.show(summary)
 
     @staticmethod
     def _summary(folder: PackageFolder, components: List[ComponentInfo], removed: List[str],
-                 orphans: List[str], created_override: bool) -> str:
+                 orphans: List[str], created_override: bool,
+                 link_notes: Sequence[str] = ()) -> str:
         unit = {0.001: "mm", 0.01: "cm", 1.0: "m"}
         action = "Updated" if folder.is_previous_export else "Exported"
         lines = [f"{action} robot '{folder.name}' in:", folder.path, ""]
@@ -1357,8 +1538,13 @@ class RobotExporter:
                              f"frame: {c.frame_source})")
                 p = c.pose_in_parent
                 lines.append(f"    xyz=\"{p.xyz_str()}\" rpy=\"{p.rpy_str()}\"")
+                if j.mimic is not None:
+                    lines.append(f"    mimics {j.mimic.leader}, multiplier "
+                                 f"{fmt_num(j.mimic.multiplier)}")
             for w in c.warnings:
                 lines.append(f"    WARNING: {w}")
+        if link_notes:
+            lines += ["", "Motion links:"] + ["  " + n for n in link_notes]
         if orphans:
             lines += ["", "joints_override.yaml entries without a matching joint: "
                       + ", ".join(orphans)]

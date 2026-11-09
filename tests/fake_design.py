@@ -208,8 +208,25 @@ class FakeAsBuiltJoint(FakeJoint):
         return self._m()
 
 
+class _ModelParameter:
+    def __init__(self, value):
+        self.value = value
+
+
+class FakeMotionLink:
+    """Fusion motion link. Values in Fusion units: rad for angles, cm for lengths."""
+
+    def __init__(self, name, joint_one, joint_two, value_one, value_two,
+                 reversed_=False, suppressed=False):
+        self.name = name
+        self.jointOne, self.jointTwo = joint_one, joint_two
+        self.valueOne, self.valueTwo = _ModelParameter(value_one), _ModelParameter(value_two)
+        self.isReversed = reversed_
+        self.isSuppressed = suppressed
+
+
 class FakeDesign:
-    def __init__(self, occurrences, export_manager, joints=(), as_built=()):
+    def __init__(self, occurrences, export_manager, joints=(), as_built=(), motion_links=None):
         class _Root:
             pass
 
@@ -217,6 +234,8 @@ class FakeDesign:
         self.rootComponent.occurrences = occurrences
         self.rootComponent.joints = list(joints)
         self.rootComponent.asBuiltJoints = list(as_built)
+        if motion_links is not None:        # None = Fusion before November 2025 (no API)
+            self.rootComponent.motionLinks = list(motion_links)
         self.exportManager = export_manager
 
 
