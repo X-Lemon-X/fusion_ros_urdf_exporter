@@ -48,7 +48,7 @@ camera, a lidar, a vertical slider and a 3-joint arm with a spoon.
 
 ### 1. One component per link
 
-![Components in the Fusion browser](docs/images/file_explorer.png)
+![Components, joints and motion links in the Fusion browser](docs/images/file_explorer.png)
 
 - Make a **top-level component named `base_link`**. It becomes the root
   link `<package>_base_link`.
@@ -146,6 +146,13 @@ supported. Link them in Fusion and the export writes a URDF `<mimic>`.
    `multiplier = second value / first value` in rad and m, negative when
    Reverse is ticked. The summary lists every motion link under
    `Motion links:`, and the reason for any that was ignored.
+
+In spoon_bot, the wheels on each side turn together: `Motion Link 12`
+makes `wheel:3` follow `wheel:1`, and `Motion Link 13` makes `wheel:4`
+follow `wheel:2`. Motion links are listed in the browser's **Joints**
+folder, below the joints (see the screenshot in
+[step 1](#1-one-component-per-link)). In RViz only `wheel_1_joint` and
+`wheel_2_joint` get a slider.
 
 Good to know:
 

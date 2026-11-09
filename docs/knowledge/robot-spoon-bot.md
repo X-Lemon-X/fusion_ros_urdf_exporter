@@ -95,3 +95,23 @@ limits −90° … 90°. These match the limits worked back from the export.
 The Fusion limits in this table are worked back from the exported values.
 They come out as round numbers, which confirms that the values are returned
 in [0, 2π).
+
+## Export `simple_bot_v2`: mimic from motion links (2026-11-09)
+
+The second version of spoon_bot, with two Fusion motion links between the
+wheels. The first real export with motion links. The colcon build passes
+(Jazzy, 2026-11-09).
+
+| Follower | Leader | Fusion link | `multiplier` in `joints.yaml` | `<mimic multiplier>` in URDF |
+|---|---|---|---|---|
+| `wheel_3_joint` | `wheel_1_joint` | `Motion Link 12` | `1.0` | `-1.0` |
+| `wheel_4_joint` | `wheel_2_joint` | `Motion Link 13` | `1.0` | `1.0` |
+
+- `joints_override.yaml` sets `flip: true` on `wheel_1_joint` (URDF axis
+  `0 0 -1`). The macro multiplies the multiplier by the flip signs of
+  both joints, so `wheel_3_joint` gets `-1.0` and still turns the same way
+  as `wheel_1_joint` physically, as in Fusion.
+- The project owner tested it and reports that the mimic works: the
+  follower wheels move with their leaders.
+- Neither link has Reverse ticked, so the reversed case of Q25 is not
+  covered by this test.

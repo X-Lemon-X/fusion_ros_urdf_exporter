@@ -6,6 +6,17 @@ linked pages; this file is the short version.
 
 ---
 
+## 2026-11-09 — Mimic tested on simple_bot_v2
+
+**Done**
+- The project owner exported spoon_bot v2 (`simple_bot_v2`) with two motion
+  links between the wheels and reports that the mimic works. The
+  multiplier was negated as expected for the flipped leader `wheel_1_joint`
+  → [robot-spoon-bot.md](knowledge/robot-spoon-bot.md#export-simple_bot_v2-mimic-from-motion-links-2026-11-09).
+
+**Next**
+- A motion link with Reverse ticked, to close Q25.
+
 ## 2026-11-09 — Mimic joints from Fusion motion links (0006)
 
 **Done**
@@ -26,8 +37,9 @@ linked pages; this file is the short version.
 chains collapsed.
 
 **Next**
-- Export a model with motion links in real Fusion (e.g. a two-finger
-  gripper, one link with Reverse ticked) and check the signs in RViz (Q25).
+- ~~Export a model with motion links in real Fusion~~ Done on
+  `simple_bot_v2`, see the entry above. A link with Reverse ticked is
+  still untested (Q25).
 - Check mimic support in Isaac Sim and ros2_control (Q26).
 
 ## 2026-11-06 — Plain URDF for Isaac Sim
